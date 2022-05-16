@@ -12,9 +12,8 @@
 
 ;;; Commentary:
 
-;; Add, remove, or run examples for a function.
-;; Displays examples right there, in the code, to lessen context-
-;; switching.
+;; Add, remove, or run examples for a function. Displays examples
+;; right there, inline, to lessen context-switching.
 
 ;;; License:
 
@@ -43,9 +42,12 @@
 ;; TODO
 ;; 1. Make multiple examples at once possible
 ;; 2. Evaluation for other languages
-;; 3. Pop minibuffer to allow editing of examples
+;; 3. Pop minibuffer to allow editing of examples, i.e. eg-edit-examples
 ;; 4. Add expected value?
 ;; 5. Provide an option to evaluate current expression as well when calling eg-run-examples
+;; 6. Make data structure of eg-examples language-dependent
+;; 7. Align test results
+;; 8. Show recommended function first (instead of last)
 
 (require 'lispy)
 (require 'cl-format)
@@ -53,9 +55,14 @@
 
 (defgroup eg nil
   "eg configuration."
-  :prefix "crux-"
+  :prefix "eg-"
   :group 'convenience)
 
+(defun eg--file-to-string (file)
+  "File to string function"
+  (with-temp-buffer
+    (insert-file-contents file)
+    (buffer-string)))
 
 ;; used in conjunction with lispy--cleanup-overlay
 (defmacro lispy--show-inline (expr)
@@ -84,7 +91,7 @@
 (defvar eg-examples nil
   "Examples associated with functions. Do not edit eg-examples manually; use eg--update-examples and eg--get-examples.")
 
-(defvar eg-examples-doc "eg-examples. changes made by hand may be overwritten."
+(defvar eg-examples-doc "eg-examples. changes made by hand may be overwritten. if you made changes, make sure to call eg-load-examples to sync eg-examples with your file."
   "That which gets added to the beginning of eg-examples.el.")
 
 (defun eg--prettify-eg-examples ()
@@ -94,20 +101,40 @@
           eg-examples))
 
 (defun eg-load-examples ()
+  "Load eg-examples from eg-file."
   (interactive)
-  (setq eg-examples (read (file-to-string eg-file)))
+  (setq eg-examples (read (eg--file-to-string eg-file)))
   (eg--prettify-eg-examples))
 
 (defun eg-save-examples ()
+  "Save current state of eg-examples (all your examples) to your eg-file."
   (interactive)
   (with-temp-buffer
     (find-file eg-file)
     (erase-buffer)
     (insert ";; " eg-examples-doc "\n")
     (insert (prin1-to-string eg-examples))
-    (lispy-multiline)                   ; FIXME: get rid of this dependency if possible
+    (lispy-multiline)  ; FIXME: get rid of this dependency if possible
     (save-buffer)
     (kill-buffer)))
+
+(defvar eg-save-on-every-update nil
+  "If t, then eg saves every time add or remove occurs. Otherwise, you have to save current state of examples manually through eg-save-examples.")
+(defvar eg-ask-save-on-exit t
+  "If t, ask to save on exiting emacs.")
+(add-hook 'kill-emacs-hook (lambda () (when (and eg-ask-save-on-exit
+                                            eg-examples ; check that it is loaded
+                                            (not (equal eg-examples (read (eg--file-to-string eg-file))))
+                                            (yes-or-no-p (format "eg: Save your examples to %s?" eg-file)))
+                                   (eg-save-examples))))
+
+(defvar eg-load-on-startup t)
+(when eg-load-on-startup
+  (eg-load-examples))
+
+(defun eg-visit-examples-file ()
+  (interactive)
+  (find-file eg-file))
 
 (defun eg--current-list ()
   "Get current list around point. FIXME: Not a perfect solution for handling different positions cursor could be in."
@@ -196,7 +223,7 @@
         (string-join (mapcar (lambda (e)
                                (concat (prin1-to-string e)
                                        " => "
-                                       (prin1-to-string (eval e))))
+                                       (lispy--eval (prin1-to-string e))))
                              examples)
                      "\n")
       (format "No examples associated with %s."
@@ -208,14 +235,14 @@
   "Prompt for a function. Show examples associated with that function."
   (interactive)
   (lispy--show-inline (eg--examples-to-string
-                       (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
+                       (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions) t))))
 
 (defun eg-run-examples-prompt ()
   "Prompt for a function. Run and show examples associated with that function."
   (interactive)
   (unless fn (setq fn (eg--operator)))
   (lispy--show-inline (eg--run-examples-to-string
-                       (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
+                       (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions) t))))
 
 (defun eg-show-examples ()
   "Show examples associated with contextual operator."
@@ -239,13 +266,16 @@
 ;; (defvar eg-add-complete-p t "FIXME: Support later. Complete function when adding example.")
 ;; (defvar eg-add-complete-args-p nil   "FIXME: Support later. Complete arguments when adding example. For this to be true, eg-add-complete-p must be true as well.")
 
-(defun eg--completing-read-sexp (prompt collection)
+(defun eg--completing-read-sexp (prompt collection &optional use-current-operator)
+  "Do a completing-read with PROMPT on COLLECTION. USE-CURRENT-OPERATOR determines whether result of eg--operator is provided as part of collection."
   (setq fn (read (completing-read prompt
                                   (mapcar #'prin1-to-string
-                                          (let ((op (eg--operator)))
-                                            (if (member op collection)
-                                                collection
-                                              (cons op collection))))))))
+                                          (if use-current-operator
+                                              (let ((op (eg--operator)))
+                                                (if (member op collection)
+                                                    collection
+                                                  (cons op collection)))
+                                            collection))))))
 
 (defun eg--perform-add-example (example fn)
   "Add EXAMPLE to FN."
@@ -253,15 +283,19 @@
     (eg--update-examples fn (append (eg--get-examples fn)
                                     (list example)))))
 
-(defvar eg-save-on-every-update nil)
+(defvar eg-display-existing-examples nil
+  "Whether to display existing examples when adding examples. Uses completing-read instead.") ; ergonomics could be improved here
 (defun eg-add-example (&optional example fn)
   (interactive)
-  (unless fn (setq fn (eg--completing-read-sexp "Associated function for adding example: " (eg--get-functions))))
+  (unless fn (setq fn (eg--completing-read-sexp "Associated function for adding example: " (eg--get-functions) t)))
   (let ((initial-value-string (if (equal (first (eg--current-list)) fn)
                                   (prin1-to-string (eg--current-list))))
         (prompt-string (cl-format nil "Example for ~a: " fn)))
     ;; FIXME: Make it possible to add multiple examples at once
-    (unless example (setq example (read (read-from-minibuffer prompt-string initial-value-string))))
+    (unless example (setq example
+                          (if eg-display-existing-examples
+                              (read (eg--completing-read-sexp prompt-string (eg--get-examples fn)))
+                            (read (read-from-minibuffer prompt-string initial-value-string)))))
     (if (eg--perform-add-example example fn)
         (message "Added %s to %s" example fn)
       (message "%s already an example in %s" example fn)))
@@ -278,13 +312,13 @@
   "Remove EXAMPLE from FN."
   (interactive)
   (unless fn
-    (setq fn (eg--completing-read-sexp "Associated function for example removal: " (eg--get-functions))))
+    (setq fn (eg--completing-read-sexp "Associated function for example removal: " (eg--get-functions)) t))
   (if (not (eg--get-examples fn))
       (message "No examples associated with %s." fn)
     (progn
       (unless example
         (setq example
-              (eg--completing-read-sexp "Example to remove:" (eg--get-examples fn) nil)))
+              (eg--completing-read-sexp "Example to remove:" (eg--get-examples fn) t)))
       (if (eg--perform-remove-example fn example)
           (message "Removed %s from %s" example fn)
         (message "Could not find example %s in %s" example fn))))
