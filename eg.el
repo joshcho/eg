@@ -35,6 +35,18 @@
 
 ;;; Code:
 
+;; Bugs
+;; 1. If a function is not defined, any eg-whatever in (function @args) doesn't work.
+;; 2. Gracefully handle if an example is broken
+;; 3. Remove examples is broken
+
+;; TODO
+;; 1. Make multiple examples at once possible
+;; 2. Evaluation for other languages
+;; 3. Pop minibuffer to allow editing of examples
+;; 4. Add expected value?
+;; 5. Provide an option to evaluate current expression as well when calling eg-run-examples
+
 (require 'lispy)
 (require 'cl-format)
 (require 'thingatpt)
@@ -43,6 +55,7 @@
   "eg configuration."
   :prefix "crux-"
   :group 'convenience)
+
 
 ;; used in conjunction with lispy--cleanup-overlay
 (defmacro lispy--show-inline (expr)
@@ -191,13 +204,13 @@
                   (upcase (prin1-to-string fn))
                 fn)))))
 
-(defun eg-prompt-show-examples ()
+(defun eg-show-examples-prompt ()
   "Prompt for a function. Show examples associated with that function."
   (interactive)
   (lispy--show-inline (eg--examples-to-string
                        (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
 
-(defun eg-prompt-run-examples ()
+(defun eg-run-examples-prompt ()
   "Prompt for a function. Run and show examples associated with that function."
   (interactive)
   (unless fn (setq fn (eg--operator)))
@@ -229,7 +242,10 @@
 (defun eg--completing-read-sexp (prompt collection)
   (setq fn (read (completing-read prompt
                                   (mapcar #'prin1-to-string
-                                          (cons (eg--operator) collection))))))
+                                          (let ((op (eg--operator)))
+                                            (if (member op collection)
+                                                collection
+                                              (cons op collection))))))))
 
 (defun eg--perform-add-example (example fn)
   "Add EXAMPLE to FN."
@@ -243,7 +259,8 @@
   (unless fn (setq fn (eg--completing-read-sexp "Associated function for adding example: " (eg--get-functions))))
   (let ((initial-value-string (if (equal (first (eg--current-list)) fn)
                                   (prin1-to-string (eg--current-list))))
-        (prompt-string (cl-format nil "Example to add for ~a: " fn)))
+        (prompt-string (cl-format nil "Example for ~a: " fn)))
+    ;; FIXME: Make it possible to add multiple examples at once
     (unless example (setq example (read (read-from-minibuffer prompt-string initial-value-string))))
     (if (eg--perform-add-example example fn)
         (message "Added %s to %s" example fn)
