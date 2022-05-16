@@ -1,15 +1,52 @@
-;; eg.el -- Access examples on the fly
+;;; eg.el --- Access examples (e.g. eg) on the fly -*- lexical-binding: t -*-
+;;
+;; Copyright © 2022-2022 Jungmin "Josh" Cho
+;;
+;; Author: Josh Cho <joshchonpc@gmail.com>
+;; URL: https://github.com/joshcho/eg
+;; Version: alpha
+;; Keywords: convenience
+;; Package-Requires: (lispy cl-format) FIXME: remove dependencies
+
+;; This file is not part of GNU Emacs.
+
+;;; Commentary:
+
+;; Add, remove, or run examples for a function.
+;; Displays examples right there, in the code, to lessen context-
+;; switching.
+
+;;; License:
+
+;; This program is free software; you can redistribute it and/or
+;; modify it under the terms of the GNU General Public License
+;; as published by the Free Software Foundation; either version 3
+;; of the License, or (at your option) any later version.
+;;
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with GNU Emacs; see the file COPYING.  If not, write to the
+;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+;; Boston, MA 02110-1301, USA.
+
+;;; Code:
 
 (require 'lispy)
-(require 'crux)
 (require 'cl-format)
-(defun crux-current-buffer-string ()
-  "Get string of current buffer without properties."
-  (substring-no-properties (buffer-string)))
+(require 'thingatpt)
+
+(defgroup eg nil
+  "eg configuration."
+  :prefix "crux-"
+  :group 'convenience)
 
 ;; used in conjunction with lispy--cleanup-overlay
 (defmacro lispy--show-inline (expr)
-  "Display the result of EXPR inline. This is implemented as a macro as EXPR must be evaluated after the program traverses to the appropriate location."
+  "Display the result of EXPR inline. EXPR must evaluate to string. This is implemented as a macro as EXPR must be evaluated after the program traverses to the appropriate location."
   `(save-excursion
      (lispy--back-to-paren)
      (unless (and (prog1 (lispy--cleanup-overlay)
@@ -34,13 +71,33 @@
 (defvar eg-examples nil
   "Examples associated with functions. Do not edit eg-examples manually; use eg--update-examples and eg--get-examples.")
 
+(defvar eg-examples-doc "eg-examples. changes made by hand may be overwritten."
+  "That which gets added to the beginning of eg-examples.el.")
+
+(defun eg--prettify-eg-examples ()
+  (mapcar (lambda (s)
+            (cons (car s)
+                  (mapcar (lambda (g) (cons (car s) g)) (cdr s))))
+          eg-examples))
+
 (defun eg-load-examples ()
   (interactive)
-  (setq eg-examples (read (file-to-string (expand-file-name "~/eg/eg-examples.el")))))
-(eg-load-examples)
+  (setq eg-examples (read (file-to-string eg-file)))
+  (eg--prettify-eg-examples))
+
+(defun eg-save-examples ()
+  (interactive)
+  (with-temp-buffer
+    (find-file eg-file)
+    (erase-buffer)
+    (insert ";; " eg-examples-doc "\n")
+    (insert (prin1-to-string eg-examples))
+    (lispy-multiline)                   ; FIXME: get rid of this dependency if possible
+    (save-buffer)
+    (kill-buffer)))
 
 (defun eg--current-list ()
-  "Get current list. FIXME: Not a perfect solution for handling different positions cursor could be in."
+  "Get current list around point. FIXME: Not a perfect solution for handling different positions cursor could be in."
   (save-excursion
     (unless (thing-at-point 'list)
       ;; not a perfect solution
@@ -56,13 +113,13 @@
             current-list))
       nil)))
 
-
 (defun eg--def-p (expr)
   "Check if EXPR is def expression (e.g. defun, defmacro, defgeneric)."
   (member (first expr) '(defun defmacro defgeneric)))
 
-(defun eg--operator (expr)
+(defun eg--operator (&optional expr)
   "Returns the operator in EXPR."
+  (unless expr (setq expr (eg--current-list)))
   (when expr
     (when (equal (first expr) 'quote)
       (setq expr (second expr)))
@@ -70,14 +127,19 @@
         (second expr)
       (first expr))))
 
-(defun eg--args (expr)
+(defun eg--args (&optional expr)
   "Returns the args in EXPR."
+  (unless expr (setq expr (eg--current-list)))
   (when expr
     (when (equal (first expr) 'quote)
       (setq expr (second expr)))
     (if (eg--def-p expr)
         (third expr)
       (rest expr))))
+
+(defun eg--example-template (&optional expr)
+  (unless expr (setq expr (eg--current-list)))
+  (cons (eg--operator expr) (eg--args expr)))
 
 (defun eg--get-examples (fn)
   "Get examples associated with FN in eg-examples."
@@ -105,17 +167,49 @@
   (let ((examples (eg--get-examples fn)))
     (if examples
         (string-join (mapcar #'prin1-to-string examples)
-                     " ")
+                     "\n")
       (format "No examples associated with %s."
               (if eg-print-functions-uppercase
                   (upcase (prin1-to-string fn))
                 fn)))))
 
-(defun eg--perform-add-example (example fn)
-  "Add EXAMPLE to FN."
-  (unless (member example (eg--get-examples fn))
-    (eg--update-examples fn (append (eg--get-examples fn)
-                                    (list example)))))
+(defun eg--run-examples-to-string (fn)
+  "Get string of examples associated with FN with run."
+  (let ((examples (eg--get-examples fn)))
+    (if examples
+        (string-join (mapcar (lambda (e)
+                               (concat (prin1-to-string e)
+                                       " => "
+                                       (prin1-to-string (eval e))))
+                             examples)
+                     "\n")
+      (format "No examples associated with %s."
+              (if eg-print-functions-uppercase
+                  (upcase (prin1-to-string fn))
+                fn)))))
+
+(defun eg-prompt-show-examples ()
+  "Prompt for a function. Show examples associated with that function."
+  (interactive)
+  (lispy--show-inline (eg--examples-to-string
+                       (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
+
+(defun eg-prompt-run-examples ()
+  "Prompt for a function. Run and show examples associated with that function."
+  (interactive)
+  (unless fn (setq fn (eg--operator)))
+  (lispy--show-inline (eg--run-examples-to-string
+                       (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
+
+(defun eg-show-examples ()
+  "Show examples associated with contextual operator."
+  (interactive)
+  (lispy--show-inline (eg--examples-to-string (eg--operator))))
+
+(defun eg-run-examples ()
+  "Run and show examples associated with contextual operator."
+  (interactive)
+  (lispy--show-inline (eg--run-examples-to-string (eg--operator))))
 
 (defun eg--parse-args (operands)
   "Parse arguments for OPERANDS."
@@ -124,38 +218,33 @@
                       unless (member o '(&optional))
                       collect o)))
 
-;; (defvar eg-add-complete-p t
-;;   "FIXME: Support later.
+;; (defvar eg-add-complete-p t "FIXME: Support later. Complete function when adding example.")
+;; (defvar eg-add-complete-args-p nil   "FIXME: Support later. Complete arguments when adding example. For this to be true, eg-add-complete-p must be true as well.")
 
-;; Complete function when adding example.")
-;; (defvar eg-add-complete-args-p nil
-;;   "FIXME: Support later.
-;; Complete arguments when adding example. For this to be true, eg-add-complete-p must be true as well.")
+(defun eg--completing-read-sexp (prompt collection)
+  (setq fn (read (completing-read prompt
+                                  (mapcar #'prin1-to-string
+                                          collection)))))
 
+(defun eg--perform-add-example (example fn)
+  "Add EXAMPLE to FN."
+  (unless (member example (eg--get-examples fn))
+    (eg--update-examples fn (append (eg--get-examples fn)
+                                    (list example)))))
+
+(defvar eg-save-on-every-update nil)
 (defun eg-add-example (&optional example fn)
   (interactive)
-  (unless fn (setq fn (eg--operator (eg--current-list))))
-  (setq fn (eg--completing-read-sexp "Associated function for adding example: " (eg--get-functions) fn))
-  (setq args (eg--parse-args (eg--args (eg--current-list)))) ; weird bug where args must be setq outside of cl-format
-  (setq prompt-string
-        (if eg-add-complete-p
-            (cl-format nil "Example to add: ")
-          (cl-format nil "Example to add for ~a: " fn)))
-  (setq completion-string
-        (cond
-         ((and (not eg-add-complete-p) eg-add-complete-args-p)
-          (error "eg-add-complete-p must be true for eg-add-complete-args-p to be true."))
-         ((and eg-add-complete-p eg-add-complete-args-p)
-          (cl-format nil "(~a ~{~a~^ ~})" fn args)
-          )
-         ((and eg-add-complete-p (not eg-add-complete-args-p))
-          (cl-format nil "(~a)" fn))
-         (t "")))
-  (unless example (setq example (read (read-from-minibuffer prompt-string
-                                                            completion-string))))
-  (if (eg--perform-add-example example fn)
-      (message "Added %s to %s" example fn)
-    (message "%s already an example in %s" example fn)))
+  (unless fn (setq fn (eg--completing-read-sexp "Associated function for adding example: " (eg--get-functions))))
+  (let ((initial-value-string (if (equal (eg--operator) fn)
+                                  (prin1-to-string (eg--current-list))))
+        (prompt-string (cl-format nil "Example to add for ~a: " fn)))
+    (unless example (setq example (read (read-from-minibuffer prompt-string initial-value-string))))
+    (if (eg--perform-add-example example fn)
+        (message "Added %s to %s" example fn)
+      (message "%s already an example in %s" example fn)))
+  (when eg-save-on-every-update
+    (eg-save-examples)))
 
 (defun eg--perform-remove-example (fn example)
   "Remove EXAMPLE from FN. Returns t if removed, nil otherwise."
@@ -163,21 +252,11 @@
     (eg--update-examples fn (remove example (eg--get-examples fn)))
     (not (equal examples (eg--get-examples fn)))))
 
-(defvar eg-complete-function-p nil)
-(defun eg--completing-read-sexp (prompt collection initial-sexp)
-  (setq fn (read (completing-read prompt
-                                  (mapcar #'prin1-to-string
-                                          collection)
-                                  nil nil
-                                  (when eg-complete-function-p
-                                    (prin1-to-string initial-sexp))
-                                  ))))
-
 (defun eg-remove-example (&optional fn example)
   "Remove EXAMPLE from FN."
   (interactive)
-  (unless fn (setq fn (eg--operator (eg--current-list))))
-  (setq fn (eg--completing-read-sexp "Associated function for example removal: " (eg--get-functions) fn))
+  (unless fn
+    (setq fn (eg--completing-read-sexp "Associated function for example removal: " (eg--get-functions))))
   (if (not (eg--get-examples fn))
       (message "No examples associated with %s." fn)
     (progn
@@ -186,60 +265,15 @@
               (eg--completing-read-sexp "Example to remove:" (eg--get-examples fn) nil)))
       (if (eg--perform-remove-example fn example)
           (message "Removed %s from %s" example fn)
-        (message "Could not find example %s in %s" example fn)))))
-
-
-(eg--perform-remove-example 'expt '(expt 3 4))
+        (message "Could not find example %s in %s" example fn))))
+  (when eg-save-on-every-update
+    (eg-save-examples)))
 
 (defun eg-print-examples (&optional fn)
   "Print examples associated with FN. If FN is nil, set FN to operator of current list."
   (interactive)
-  (unless fn (setq fn (eg--operator (eg--current-list))))
-  (message (eg--examples-to-string fn))
-  )
+  (unless fn (setq fn (eg--operator)))
+  (message (eg--examples-to-string fn)))
 
-(defun eg-edit-cases (&optional filename)
-  "Edit cases corresponding to current operator in FILENAME. FILENAME defaults to eg-file."
-  (interactive)
-  (unless filename (setq filename eg-file))
-  (let ((query (eg--op))
-        (args (eg--args)))
-    (setq query (symbol-name query))
-    (load filename)
-    (lispy--show-inline (assoc eg-examples query))
-    ;; (when (eql major-mode 'fundamental-mode)
-    ;;   (cond ((string-match ".el" (buffer-file-name)) (emacs-lisp-mode))
-    ;;         ((string-match ".lisp" (buffer-file-name)) (lisp-mode))))
-    ;; (crux-current-buffer-string)
-    ;; (beginning-of-buffer)
-    ;; (unless (re-search-forward (concat ";; _" query ".*\n") nil t)
-    ;;   (end-of-buffer)
-    ;;   (insert "\n\n")
-    ;;   (insert ";; _" query "\n")
-    ;;   (insert "(" query (string-join (mapcar (lambda (s) (format "%s" s)) (when args (cons "" args))) " ") ")")
-    ;;   )
-    ;; (while (not (current-line-empty-p))
-    ;;   (next-line))
-    ))
-
-(defun current-line-empty-p ()
-  (save-excursion
-    (beginning-of-line)
-    (looking-at-p "[[:blank:]]*$")))
-
-(defun eg-return-to-function ()
-  "Edit cases corresponding to current operator."
-  (interactive)
-  (when (re-search-backward ";; _\\([a-zA-Z0-9-%&*]+\\).*\n" nil t)
-    (let ((function-name (match-string 1)))
-      (xref-find-definitions-other-window function-name))))
-
-(defun eg-function-cases ()
-  "Flash between function and its cases. FIXME: string-match isn't perfect right now."
-  (interactive)
-  (if (string-match "\\(~eg\\)" (buffer-file-name))
-      (eg-return-to-function)
-    (eg-edit-cases)))
-
-(define-key emacs-lisp-mode-map (kbd "C-+") 'eg-function-cases)
-(define-key lisp-mode-map (kbd "C-+") 'eg-between-function-cases)
+(define-key emacs-lisp-mode-map (kbd "C-+") 'eg-run-examples)
+(define-key lisp-mode-map (kbd "C-+") 'eg-run-examples)
