@@ -148,8 +148,11 @@
 (defun eg--update-examples (fn examples)
   "Set examples associated with FN to EXAMPLES."
   (if examples
-      (setf (cdr (assoc fn eg-examples))
-            (mapcar #'cdr examples))
+      (if (cdr (assoc fn eg-examples))
+          (setf (cdr (assoc fn eg-examples))
+                (mapcar #'cdr examples))
+        (setq eg-examples (cons (cons fn (mapcar #'cdr examples))
+                                eg-examples)))
     (setq eg-examples
           (cl-loop for pair in eg-examples
                    unless (equal (car pair) fn)
@@ -204,12 +207,14 @@
 (defun eg-show-examples ()
   "Show examples associated with contextual operator."
   (interactive)
-  (lispy--show-inline (eg--examples-to-string (eg--operator))))
+  (let ((str (eg--examples-to-string (eg--operator))))
+    (lispy--show-inline str)))
 
 (defun eg-run-examples ()
   "Run and show examples associated with contextual operator."
   (interactive)
-  (lispy--show-inline (eg--run-examples-to-string (eg--operator))))
+  (let ((str (eg--run-examples-to-string (eg--operator))))
+    (lispy--show-inline str)))
 
 (defun eg--parse-args (operands)
   "Parse arguments for OPERANDS."
@@ -224,7 +229,7 @@
 (defun eg--completing-read-sexp (prompt collection)
   (setq fn (read (completing-read prompt
                                   (mapcar #'prin1-to-string
-                                          collection)))))
+                                          (cons (eg--operator) collection))))))
 
 (defun eg--perform-add-example (example fn)
   "Add EXAMPLE to FN."
@@ -236,7 +241,7 @@
 (defun eg-add-example (&optional example fn)
   (interactive)
   (unless fn (setq fn (eg--completing-read-sexp "Associated function for adding example: " (eg--get-functions))))
-  (let ((initial-value-string (if (equal (eg--operator) fn)
+  (let ((initial-value-string (if (equal (first (eg--current-list)) fn)
                                   (prin1-to-string (eg--current-list))))
         (prompt-string (cl-format nil "Example to add for ~a: " fn)))
     (unless example (setq example (read (read-from-minibuffer prompt-string initial-value-string))))
