@@ -41,17 +41,16 @@
 ;; 4. Functions that use lispy--show-inline are all broken.
 
 ;; TODO
-;; 1. Make multiple examples at once possible
-;; 2. Evaluation for other languages
-;; 3. Pop minibuffer to allow editing of examples, i.e. eg-edit-examples
-;; 4. Add expected value?
-;; 5. Provide an option to evaluate current expression as well when calling eg-run-examples
-;; 6. Make data structure of eg-examples language-dependent
-;; 7. Align test results
-;; 8. Show recommended function first (instead of last)
-;; 9. Support multiline tests
-;; 10. Multiline support for long sexps
-;; 11. Live-updating minibuffer
+;; 1. Evaluation for other languages
+;; 2. Pop minibuffer to allow editing of examples, i.e. eg-edit-examples
+;; 3. Add expected value?
+;; 4. Provide an option to evaluate current expression as well when calling eg-run-examples
+;; 5. Make data structure of eg-examples language-dependent
+;; 6. Align test results
+;; 7. Show recommended function first (instead of last)
+;; 8. Support multiline tests
+;; 9. Multiline support for long sexps
+;; 10. Add interactive add example (like eg-live)
 
 (require 'lispy)
 (require 'cl-format)
@@ -127,19 +126,15 @@
 (defvar eg-ask-save-on-exit t
   "If t, ask to save on exiting emacs.")
 
-(add-hook 'kill-buffer-hook (lambda () (when (and eg-ask-save-on-exit
-                                             eg-examples ; check that it is loaded
-                                             (not (equal eg-examples (read (eg--file-to-string eg-file))))
-                                             (yes-or-no-p (format "eg: Save your examples to %s?" eg-file)))
-                                    (eg-save-examples))))
+(add-hook 'kill-emacs-hook (lambda () (when (and eg-ask-save-on-exit
+                                            eg-examples ; check that it is loaded
+                                            (not (equal eg-examples (read (eg--file-to-string eg-file))))
+                                            (yes-or-no-p (format "eg: Save your examples to %s?" eg-file)))
+                                   (eg-save-examples))))
 
 (defvar eg-load-on-startup t)
 (when eg-load-on-startup
   (eg-load-examples))
-
-(defun eg-visit-examples-file ()
-  (interactive)
-  (find-file eg-file))
 
 (defun eg--current-list ()
   "Get current list around point. FIXME: Not a perfect solution for handling different positions cursor could be in."
@@ -359,10 +354,9 @@
 (general-def
   :prefix "C-c C-e"
   :keymaps 'lispy-mode-map
-  "a" 'eg-add-example
   "C-a" 'eg-add-example
-  "r" 'eg-run-examples
   "C-r" 'eg-run-examples
+  "C-s" 'eg-save-examples
   "S-r" 'eg-remove-examples
   "C-S-r" 'eg-remove-examples
   )
