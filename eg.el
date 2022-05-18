@@ -32,8 +32,6 @@
 ;; Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ;; Boston, MA 02110-1301, USA.
 
-;;; Code:
-
 ;; Bugs
 ;; 1. If a function is not defined, any eg-whatever in (function @args) doesn't work.
 ;; 2. Gracefully handle if an example is broken
@@ -49,8 +47,20 @@
 ;; 6. Align test results
 ;; 7. Show recommended function first (instead of last)
 ;; 8. Support multiline tests
-;; 9. Multiline support for long sexps
-;; 10. Add interactive add example (like eg-live)
+;; 9. Add interactive add example (like eg-live)
+;; 10. Add multiline support for inline displays
+;; 11. Change data structure to allow tests that do not start with the function associated (PRIORITY #1)
+
+;; TODO for eg-live
+;; 1. Display header instead of comment
+;; 2. Think of better distinction between eg-live and eg-live-fn
+;; 3. *Live preview of examples as you scroll through, maybe use consult?*
+;; 4. Gracefully handle keyboard exits in completing-read as per
+;; https://emacs.stackexchange.com/questions/20974/exit-minibuffer-and-execute-a-command-afterwards
+;; 5. Generalize personal use with exit-emacs-state
+;; 6. Allow adding new examples with eg-live-fn
+
+;;; Code:
 
 (require 'lispy)
 (require 'cl-format)
@@ -141,7 +151,7 @@
   (save-excursion
     (unless (thing-at-point 'list)
       ;; not a perfect solution
-      (backward-char))
+      (ignore-error (backward-char)))
     (if (thing-at-point 'list)
         (let* ((current-list (read (thing-at-point 'list)))
                (current-list-string-p (symbolp current-list)))
@@ -235,7 +245,7 @@
   "Prompt for a function. Show examples associated with that function."
   (interactive)
   (let ((str (eg--examples-to-string
-              (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions) t))))
+              (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
     (lispy--show-inline str)))
 
 
@@ -244,7 +254,7 @@
   (interactive)
   (unless fn (setq fn (eg--operator)))
   (let ((str (eg--run-examples-to-string
-              (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions) t))))
+              (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
     (lispy--show-inline str)))
 
 (defun eg-show-examples ()
@@ -281,6 +291,7 @@
                               initial-value)))
 
 (defun eg--ask-for-function (prompt)
+  "Ask for function in PROMPT."
   (eg--completing-read-sexp prompt (adjoin (eg--operator) (eg--get-functions))))
 
 (defun eg--perform-add-example (example fn)
@@ -344,6 +355,10 @@
   (unless fn (setq fn (eg--operator)))
   (message (eg--examples-to-string fn)))
 
+(defun eg-visit-examples ()
+  (interactive)
+  (find-file eg-file))
+
 (define-prefix-command 'eg-command-map)
 (global-set-key (kbd "C-c C-e") 'eg-command-map)
 
@@ -365,3 +380,5 @@
   :keymaps '(emacs-lisp-mode-map eshell-mode-map)
   "C-c C-z" 'eshell-toggle
   )
+
+(load (expand-file-name "~/eg/eg-live.el"))

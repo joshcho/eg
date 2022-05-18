@@ -1,0 +1,10 @@
+#+title: eg master document
+
+* Introduction
+eg (i.e. exempli gratia) is a fast way to record and test examples of your functions.
+
+The main distinguishing feature of eg is displaying examples inline, right there in the code.
+
+* Keybindings
+
+~C-+~ for eg-run-examples, which displays your examples inline and runs them.
