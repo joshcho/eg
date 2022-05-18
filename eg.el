@@ -37,6 +37,7 @@
 ;; 2. Gracefully handle if an example is broken
 ;; 3. Remove examples is broken
 ;; 4. Functions that use lispy--show-inline are all broken.
+;; 5. Weird behavior when calling run-examples (probably) from eg-live-fn buffer
 
 ;; TODO
 ;; 1. Evaluation for other languages
@@ -59,7 +60,7 @@
 ;; https://emacs.stackexchange.com/questions/20974/exit-minibuffer-and-execute-a-command-afterwards
 ;; 5. Generalize personal use with exit-emacs-state
 ;; 6. Allow adding new examples with eg-live-fn
-
+;; 7. Recover location (forcing save-excursion) when running examples
 ;;; Code:
 
 (require 'lispy)

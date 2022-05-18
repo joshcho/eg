@@ -23,16 +23,11 @@
 (defvar eg-live-buffer-name "*eg-live*")
 (defun eg-live ()
   (interactive)
-  (get-buffer-create eg-live-buffer-name)
-  (switch-to-buffer-other-window eg-live-buffer-name)
-  (erase-buffer)
-  (insert (prin1-to-string eg-examples))
-  (lispy-multiline)
-  (beginning-of-buffer)
+  (eg--setup-buffer eg-live-buffer-name (prin1-to-string eg-examples))
   (emacs-lisp-mode)
-  (eg-live-mode)
-  (evil-emacs-state)                  ; FIXME: generalize personal use
-  )
+  (eg-live-mode))
+
+(defvar eg-live-window-height 16)
 
 (defun eg--sort-examples (examples)
   (cl-sort examples
@@ -61,24 +56,64 @@
                     (eg--sync-live-fn-if-modified)
                     (kill-buffer)
                     (delete-window)))
+    (define-key map
+                (kbd "C-<tab>")
+                'eg-live-fn-switch)
+    (define-key map
+                (kbd "C-c C-r")
+                'eg-live-fn-run-toggle)
     map))
 
 (let (buffer-fn)
   (defun eg-live-fn ()
     (interactive)
-    (get-buffer-create eg-live-fn-buffer-name)
-    (switch-to-buffer-other-window eg-live-fn-buffer-name)
-    (erase-buffer)
-    (emacs-lisp-mode)
+    (setq buffer-fn (if (member (eg--operator) (eg--get-functions))
+                        (eg--operator)
+                      (eg--ask-for-function "Function to Edit: "))) ; TODO: add preview options here
+    (eg--setup-buffer eg-live-fn-buffer-name
+                      (concat (format ";; %s\n" buffer-fn)
+                              (prin1-to-string (eg--get-examples buffer-fn))))
     (eg-live-fn-mode)
-    (evil-emacs-state)   ; FIXME: generalize personal use
-    (setq buffer-fn nil) ; to account for cancelling minibuffer command
-    (setq buffer-fn (eg--ask-for-function "Function to Edit: "))
-    (insert (format ";; %s\n" buffer-fn)) ; FIXME: make this into a proper header
-    (insert (prin1-to-string (eg--get-examples buffer-fn)))
-    (lispy-multiline)
-    (beginning-of-buffer)
     )
+
+  (defun eg-live-fn-run-and-comment ()
+    (interactive)
+    (let ((examples (read (buffer-string))))
+      (erase-buffer)
+      (insert (format ";; %s\n" (prin1-to-string buffer-fn)))
+      (cl-loop
+       initially (insert "(")
+       for e in examples
+       for i upfrom 0
+       do (insert (format "%s%s ; => %s\n" (if (= i 0) "" " ") e (lispy--eval (prin1-to-string e))))
+       finally (insert " )"))
+      (beginning-of-buffer))
+    )
+
+  (let (showing-runs)
+    (defun eg-live-fn-run-toggle ()
+      (interactive)
+      (if showing-runs
+          (let ((examples (read (buffer-string))))
+            (erase-buffer)
+            (insert (format ";; %s\n" (prin1-to-string buffer-fn)))
+            (insert (prin1-to-string examples))
+            (lispy-multiline)
+            (beginning-of-buffer))
+        (eg-live-fn-run-and-comment))
+      (setq showing-runs (not showing-runs))))
+
+  (defun eg-live-fn-switch ()
+    (interactive)
+    (eg--sync-live-fn-if-modified)
+    (let ((temp-fn (eg--ask-for-function "Function to Edit: ")))
+      ;; account for keyboard-exit from eg--ask-for-function, but do not modify buffer-fn yet
+      (eg--sync-live-fn-if-modified)
+      (setq buffer-fn temp-fn))
+    (eg--setup-buffer eg-live-fn-buffer-name
+                      (concat (format ";; %s\n" buffer-fn)
+                              (prin1-to-string (eg--get-examples buffer-fn))))
+    (eg-live-fn-mode))
 
   (defun eg--sync-live-fn-if-modified ()
     (when buffer-fn
@@ -87,7 +122,26 @@
           (eg--update-examples buffer-fn current-fn-examples)
           (message "eg-examples synced for %s" buffer-fn))))))
 
+(defun eg--setup-buffer (buffer-name buffer-string)
+  "Create new buffer with BUFFER-NAME and BUFFER-STRING. Subroutine of eg-live-fn and eg-live."
+  (get-buffer-create buffer-name)
+  (let ((stored-major-mode major-mode)) ; FIXME: Language should be specified in the data structure
+    (unless (equal (buffer-name (current-buffer)) eg-live-fn-buffer-name)
+      (switch-to-buffer-other-window eg-live-fn-buffer-name)
+      (set-window-text-height (get-buffer-window) eg-live-window-height))
+    (erase-buffer)
+    (cond
+     ((equal stored-major-mode 'emacs-lisp-mode) (emacs-lisp-mode))
+     ((equal stored-major-mode 'lisp-mode) (lisp-mode))))
+  (insert buffer-string)
+  (lispy-multiline)
+  (beginning-of-buffer)
+  (evil-emacs-state)                   ;FIXME: generalize personal use
+  )
+
+
 (general-def
   :keymaps 'lispy-mode-map
   eg-live-toggle-key 'eg-live
-  eg-live-fn-toggle-key 'eg-live-fn)
+  eg-live-fn-toggle-key 'eg-live-fn
+  )

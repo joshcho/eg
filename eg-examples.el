@@ -1,5 +1,9 @@
 ;; eg-examples. changes made by hand may be overwritten. if you made changes, make sure to call eg-load-examples to sync eg-examples with your file.
-((completing-read ("Letter: " '(a b c d)))
+((adjoin ('a '(a b c d)))
+ (remove ('a '((a . b)
+               (c . d))
+             :key #'car))
+ (completing-read ("Letter: " '(a b c d)))
  (format (";; %s" 'a))
  (+ (1 2)
     (2 3)
