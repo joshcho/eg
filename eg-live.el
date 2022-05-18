@@ -23,23 +23,19 @@
 (defvar eg-live-buffer-name "*eg-live*")
 (defun eg-live ()
   (interactive)
-  (eg--setup-buffer eg-live-buffer-name (prin1-to-string eg-examples))
+  (eg--setup-buffer eg-live-buffer-name (prin1-to-string (eg--local->stored eg-examples)))
   (emacs-lisp-mode)
   (eg-live-mode))
 
 (defvar eg-live-window-height 16)
 
-(defun eg--sort-examples (examples)
-  (cl-sort examples
-           #'string<
-           :key #'car))
-
 (defun eg--sync-live-if-modified ()
   (when (member 'eg-live-mode minor-mode-list)
-    (let ((current-examples (read (buffer-string))))
-      (unless (equal eg-examples current-examples)
+    (let ((current-examples (eg--stored->local (read (buffer-string)))))
+      (unless (eg--local-examples-equal eg-examples current-examples)
         (setq eg-examples current-examples)
         (message "eg-examples synced")))))
+
 
 (defvar eg-live-fn-buffer-name "*eg-live-fn*")
 (defvar eg-live-fn-toggle-key (kbd "C-c C-'"))
@@ -138,7 +134,6 @@
   (beginning-of-buffer)
   (evil-emacs-state)                   ;FIXME: generalize personal use
   )
-
 
 (general-def
   :keymaps 'lispy-mode-map

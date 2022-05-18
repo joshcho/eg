@@ -40,17 +40,16 @@
 ;; 5. Weird behavior when calling run-examples (probably) from eg-live-fn buffer
 
 ;; TODO
-;; 1. Evaluation for other languages
-;; 2. Pop minibuffer to allow editing of examples, i.e. eg-edit-examples
-;; 3. Add expected value?
-;; 4. Provide an option to evaluate current expression as well when calling eg-run-examples
-;; 5. Make data structure of eg-examples language-dependent
-;; 6. Align test results
-;; 7. Show recommended function first (instead of last)
-;; 8. Support multiline tests
-;; 9. Add interactive add example (like eg-live)
-;; 10. Add multiline support for inline displays
-;; 11. Change data structure to allow tests that do not start with the function associated (PRIORITY #1)
+;; 1. Evaluation for other languages (e.g. python)
+;; 2. Add expected value?
+;; 3. Provide an option to evaluate current expression as well when calling eg-run-examples
+;; 4. Align test results
+;; 5. Show recommended function first (instead of last)
+;; 6. Add interactive add example (like eg-live)
+;; 7. Add multiline support for inline displays
+;; 8. Allow persistent commented tests
+;; 9. Separate examples for different languages (and load them separately, too)
+;; 10. Make lang into keyword, not optional
 
 ;; TODO for eg-live
 ;; 1. Display header instead of comment
@@ -59,13 +58,15 @@
 ;; 4. Gracefully handle keyboard exits in completing-read as per
 ;; https://emacs.stackexchange.com/questions/20974/exit-minibuffer-and-execute-a-command-afterwards
 ;; 5. Generalize personal use with exit-emacs-state
-;; 6. Allow adding new examples with eg-live-fn
+;; 6. Allow adding new fn-examples with eg-live-fn
 ;; 7. Recover location (forcing save-excursion) when running examples
+
 ;;; Code:
 
 (require 'lispy)
 (require 'cl-format)
 (require 'thingatpt)
+(require 'ht)
 
 (defgroup eg nil
   "eg configuration."
@@ -103,34 +104,95 @@
 (defvar eg-file (expand-file-name "~/eg/eg-examples.el"))
 
 (defvar eg-examples nil
-  "Examples associated with functions. Do not edit eg-examples manually; use eg--update-examples and eg--get-examples.")
+  "Examples associated with functions.")
 
 (defvar eg-examples-doc "eg-examples. changes made by hand may be overwritten. if you made changes, make sure to call eg-load-examples to sync eg-examples with your file."
   "That which gets added to the beginning of eg-examples.el.")
 
-(defun eg--prettify-eg-examples ()
-  (mapcar (lambda (s)
-            (cons (car s)
-                  (mapcar (lambda (g) (cons (car s) g)) (cdr s))))
-          eg-examples))
+;; (defun eg--prettify-eg-examples ()
+;;   (mapcar (lambda (s)
+;;             (cons (car s)
+;;                   (mapcar (lambda (g) (cons (car s) g)) (cdr s))))
+;;           eg-examples))
+
+;; (defun read-multiple (string)
+;;   "Read STRING and return a list of its Lisp forms."
+;;   (read (format "(%s)" string)))
+
+(defun eg--local->stored (local-examples)
+  "Convert LOCAL-EXAMPLES to stored format. See eg--stored->local for explanation."
+  (cl-loop for lang being the hash-keys in local-examples
+           using (hash-value fn-examples)
+           collect (cons lang (ht->alist fn-examples))
+           ))
+
+(defun eg--stored->local (stored-examples)
+  "Convert STORED-EXAMPLES to local format. eg uses two representations for data. When storing examples in eg-file, eg uses nested associaton list. When loading and using examples in emacs, eg uses nested hash table. This function (and eg--local->stored) converts between the two formats."
+  (ht<-alist
+   (cl-loop for (lang . fn-examples) in stored-examples
+            collect (cons lang (ht<-alist fn-examples)))))
+
+(defun eg--local-examples-equal (examples1 examples2)
+  (and
+   (= (ht-size examples1)
+      (ht-size examples2))
+   (cl-loop for lang being the hash-keys in examples1
+            always (ht-equal? (ht-get examples1 lang)
+                              (ht-get examples2 lang)))))
+
+;; (defun eg--iterate-on-examples (func)
+;;   ;; for refactoring
+;;   (cl-loop for lang being the hash-keys in eg-examples
+;;            do (cl-loop for fn being the hash-keys in (ht-get eg-examples lang)
+;;                        do (setf (ht-get* eg-examples lang fn)
+;;                                 (mapcar func (ht-get* eg-examples lang fn))))))
 
 (defun eg-load-examples ()
   "Load eg-examples from eg-file."
   (interactive)
-  (setq eg-examples (read (eg--file-to-string eg-file)))
-  (eg--prettify-eg-examples))
+  (let ((stored-examples (read (eg--file-to-string eg-file))))
+    (setq eg-examples (eg--stored->local stored-examples)))
+  ;; (eg--prettify-eg-examples)
+  )
+
+(defun eg--funcall-when (pred function argument)
+  "Beware that it runs on single ARGUMENT, not arguments."
+  (if pred
+      (funcall function argument)
+    argument))
+
+(defun eg--sort-stored (examples)
+  (cl-sort (cl-loop for (lang . fn-examples) in examples
+                    collect (cons lang (cl-sort fn-examples #'string< :key #'car)))
+           #'string< :key #'car))
+
+(defvar eg-sort-on-save t
+  "Whether to sort your examples on save. Can be slow if you have a lot of examples.")
+(defun eg--examples-modified ()
+  "Check if eg-examples is modified since load."
+  (not (eg--local-examples-equal
+        eg-examples
+        (eg--stored-format->local-format (read (eg--file-to-string eg-file))))))
 
 (defun eg-save-examples ()
-  "Save current state of eg-examples (all your examples) to your eg-file."
+  "Save current state of eg-examples to your eg-file."
   (interactive)
-  (with-temp-buffer
-    (find-file eg-file)
-    (erase-buffer)
-    (insert ";; " eg-examples-doc "\n")
-    (insert (prin1-to-string eg-examples))
-    (lispy-multiline)  ; FIXME: get rid of this dependency if possible
-    (save-buffer)
-    (kill-buffer)))
+  (if (eg--examples-modified)
+      (save-window-excursion
+        (let ((buffer-already-open (get-file-buffer eg-file)))
+          (find-file eg-file)
+          (erase-buffer)
+          (insert ";; " eg-examples-doc "\n")
+          (insert (prin1-to-string
+                   (eg--funcall-when eg-sort-on-save
+                                     #'eg--sort-stored
+                                     (eg--local->stored eg-examples))))
+          (lispy-multiline) ; FIXME: get rid of this dependency if possible
+          (insert ")")
+          (save-buffer)
+          (unless buffer-already-open
+            (kill-buffer))))
+    (message "Examples not modified since load, not saning.")))
 
 (defvar eg-save-on-every-update nil
   "If t, then eg saves every time add or remove occurs. Otherwise, you have to save current state of examples manually through eg-save-examples.")
@@ -138,8 +200,7 @@
   "If t, ask to save on exiting emacs.")
 
 (add-hook 'kill-emacs-hook (lambda () (when (and eg-ask-save-on-exit
-                                            eg-examples ; check that it is loaded
-                                            (not (equal eg-examples (read (eg--file-to-string eg-file))))
+                                            (eg--examples-modified)
                                             (yes-or-no-p (format "eg: Save your examples to %s?" eg-file)))
                                    (eg-save-examples))))
 
@@ -166,11 +227,10 @@
 
 (defun eg--def-p (expr)
   "Check if EXPR is def expression (e.g. defun, defmacro, defgeneric)."
-  (member (first expr) '(defun defmacro defgeneric)))
+  (member (first expr) '(cl-defun cl-defmacro defun defmacro defgeneric)))
 
-(defun eg--operator (&optional expr)
+(cl-defun eg--operator (&optional (expr (eg--current-list)))
   "Returns the operator in EXPR."
-  (unless expr (setq expr (eg--current-list)))
   (when expr
     (when (equal (first expr) 'quote)
       (setq expr (second expr)))
@@ -178,9 +238,8 @@
         (second expr)
       (first expr))))
 
-(defun eg--args (&optional expr)
+(cl-defun eg--args (&optional (expr (eg--current-list)))
   "Returns the args in EXPR."
-  (unless expr (setq expr (eg--current-list)))
   (when expr
     (when (equal (first expr) 'quote)
       (setq expr (second expr)))
@@ -188,59 +247,50 @@
         (third expr)
       (rest expr))))
 
-(defun eg--example-template (&optional expr)
-  (unless expr (setq expr (eg--current-list)))
+(cl-defun eg--example-template (&optional (expr (eg--current-list)))
   (cons (eg--operator expr) (eg--args expr)))
 
-(defun eg--get-examples (fn)
-  "Get examples associated with FN in eg-examples."
-  (mapcar (lambda (s) (cons fn s)) (cdr (assoc fn eg-examples))))
+(cl-defun eg--get-examples (fn &optional (lang (eg--current-lang)))
+  "Get examples associated with LANG and FN in eg-examples."
+  (ht-get* eg-examples lang fn))
 
-(defun eg--update-examples (fn examples)
-  "Set examples associated with FN to EXAMPLES."
-  (if examples
-      (if (cdr (assoc fn eg-examples))
-          (setf (cdr (assoc fn eg-examples))
-                (mapcar #'cdr examples))
-        (setq eg-examples (cons (cons fn (mapcar #'cdr examples))
-                                eg-examples)))
-    (setq eg-examples
-          (cl-loop for pair in eg-examples
-                   unless (equal (car pair) fn)
-                   collect pair)))
-  examples)
+(cl-defun eg--update-examples (fn examples &optional (lang (eg--current-lang)))
+  "Set examples associated with LANG and FN to EXAMPLES."
+  (if (null examples)
+      (ht-remove (ht-get eg-examples lang) fn)
+    (setf (ht-get* eg-examples lang fn) examples)))
 
-(defun eg--get-functions ()
-  (mapcar #'car eg-examples))
+(cl-defun eg--get-functions (&optional (lang (eg--current-lang)))
+  (ht-keys (ht-get eg-examples lang)))
+
+(cl-defun eg--get-languages ()
+  (ht-keys eg-examples))
 
 (defvar eg-print-functions-uppercase nil
   "Whether to print functions in upper case.")
 
-(defun eg--examples-to-string (fn)
-  "Get string of examples associated with FN."
-  (let ((examples (eg--get-examples fn)))
-    (if examples
-        (string-join (mapcar #'prin1-to-string examples)
-                     "\n")
-      (format "No examples associated with %s."
-              (if eg-print-functions-uppercase
-                  (upcase (prin1-to-string fn))
-                fn)))))
+(cl-defun eg--examples-to-string (fn &optional (print-function (prin1-to-string)) (lang (eg--current-lang)))
+  "Get string of examples associated with LANG and FN."
+  (let ((examples (eg--get-examples fn lang)))
+    (if (null examples)
+        (format "No examples associated with %s."
+                (if eg-print-functions-uppercase
+                    (upcase (prin1-to-string fn))
+                  fn))
+      (string-join (mapcar print-function examples)
+                   "\n"))))
 
-(defun eg--run-examples-to-string (fn)
-  "Get string of examples associated with FN with run."
-  (let ((examples (eg--get-examples fn)))
-    (if examples
-        (string-join (mapcar (lambda (e)
-                               (concat (prin1-to-string e)
-                                       " => "
-                                       (lispy--eval (prin1-to-string e))))
-                             examples)
-                     "\n")
-      (format "No examples associated with %s."
-              (if eg-print-functions-uppercase
-                  (upcase (prin1-to-string fn))
-                fn)))))
+(cl-defun eg--run-examples-to-string (fn &optional (lang (eg--current-lang)))
+  "Get string of examples associated with LANG and FN with run."
+  (eg--examples-to-string fn #'(lambda (e)
+                                 (concat (prin1-to-string e)
+                                         " => "
+                                         (lispy--eval (prin1-to-string e))))))
+
+(defun eg--current-lang ()
+  (if (equal major-mode 'emacs-lisp-mode)
+      'emacs-lisp
+    'lisp))
 
 (defun eg-show-examples-prompt ()
   "Prompt for a function. Show examples associated with that function."
@@ -249,11 +299,9 @@
               (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
     (lispy--show-inline str)))
 
-
 (defun eg-run-examples-prompt ()
   "Prompt for a function. Run and show examples associated with that function."
   (interactive)
-  (unless fn (setq fn (eg--operator)))
   (let ((str (eg--run-examples-to-string
               (eg--completing-read-sexp "Function to show examples for: " (eg--get-functions)))))
     (lispy--show-inline str)))
@@ -291,9 +339,15 @@
   (read (read-from-minibuffer prompt
                               initial-value)))
 
-(defun eg--ask-for-function (prompt)
+(cl-defun eg--ask-for-function (prompt &optional (lang (eg--current-lang)))
   "Ask for function in PROMPT."
-  (eg--completing-read-sexp prompt (adjoin (eg--operator) (eg--get-functions))))
+  (eg--completing-read-sexp prompt (append (when-let (op (eg--operator))
+                                             (list op))
+                                           (eg--get-functions lang))))
+
+(defun eg--ask-for-language (prompt)
+  "Ask for language in PROMPT."
+  (eg--completing-read-sexp prompt (eg--get-languages)))
 
 (defun eg--perform-add-example (example fn)
   "Add EXAMPLE to FN."
@@ -317,9 +371,10 @@
 
 (defun eg--perform-remove-example (example fn)
   "Remove EXAMPLE from FN. Returns t if removed, nil otherwise."
-  (let ((examples (eg--get-examples fn)))
-    (eg--update-examples fn (remove example (eg--get-examples fn)))
-    (not (equal examples (eg--get-examples fn)))))
+  (let* ((examples (eg--get-examples fn))
+         (updated-examples (remove example examples)))
+    (eg--update-examples fn updated-examples)
+    (not (equal updated-examples examples))))
 
 (defun eg--query-example-for-remove (fn)
   (eg--completing-read-sexp "Example to remove: "
@@ -340,6 +395,13 @@
   (interactive)
   (message "%s" (eg--get-examples (eg--ask-for-function "Which function to fetch examples from: "))))
 
+(defun eg-get-examples-specify-language ()
+  (interactive)
+  (let* ((lang (eg--ask-for-language "Which language to fetch examples from: "))
+         (fn (eg--ask-for-function "Which function to fetch examples from: " lang)))
+    (message "%s" (eg--get-examples fn
+                                    lang))))
+
 (defun eg-modify-example (fn-prompt get-example perform-function success-prompt fail-prompt)
   "PERFORM-FUNCTION takes example and fn to modify eg-examples. This function is used as template for eg-add-example and eg-remove-example. GET-EXAMPLE takes in fn."
   (let* ((fn (eg--ask-for-function fn-prompt))
@@ -350,10 +412,9 @@
   (when eg-save-on-every-update
     (eg-save-examples)))
 
-(defun eg-print-examples (&optional fn)
+(cl-defun eg-print-examples (&optional (fn eg--operator))
   "Print examples associated with FN. If FN is nil, set FN to operator of current list."
   (interactive)
-  (unless fn (setq fn (eg--operator)))
   (message (eg--examples-to-string fn)))
 
 (defun eg-visit-examples ()
