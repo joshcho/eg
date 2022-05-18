@@ -122,8 +122,8 @@
   "Create new buffer with BUFFER-NAME and BUFFER-STRING. Subroutine of eg-live-fn and eg-live."
   (get-buffer-create buffer-name)
   (let ((stored-major-mode major-mode)) ; FIXME: Language should be specified in the data structure
-    (unless (equal (buffer-name (current-buffer)) eg-live-fn-buffer-name)
-      (switch-to-buffer-other-window eg-live-fn-buffer-name)
+    (unless (equal (buffer-name (current-buffer)) buffer-name)
+      (switch-to-buffer-other-window buffer-name)
       (set-window-text-height (get-buffer-window) eg-live-window-height))
     (erase-buffer)
     (cond

@@ -50,6 +50,8 @@
 ;; 8. Allow persistent commented tests
 ;; 9. Separate examples for different languages (and load them separately, too)
 ;; 10. Make lang into keyword, not optional
+;; 11. Differentiate between my keybindings and general keybindings (use-package just for myself)
+;; 12. Fix some porting issues in README (consider markdown)
 
 ;; TODO for eg-live
 ;; 1. Display header instead of comment
@@ -64,7 +66,6 @@
 ;;; Code:
 
 (require 'lispy)
-(require 'cl-format)
 (require 'thingatpt)
 (require 'ht)
 
@@ -79,7 +80,6 @@
     (insert-file-contents file)
     (buffer-string)))
 
-;; used in conjunction with lispy--cleanup-overlay
 (defmacro lispy--show-inline (expr)
   "Display the result of EXPR inline. EXPR must evaluate to string. This is implemented as a macro as EXPR must be evaluated after the program traverses to the appropriate location. FIXME: Really weird interaction."
   `(save-excursion

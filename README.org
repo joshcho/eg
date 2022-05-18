@@ -1,10 +1,50 @@
-#+title: eg master document
+#+OPTIONS: toc
+#+title: eg.el
 
 * Introduction
-eg (i.e. exempli gratia) is a fast way to record and test examples of your functions.
+/eg/ (i.e. exempli gratia) is a fast way to craft, test, and store examples of pure functions.
 
-The main distinguishing feature of eg is displaying examples inline, right there in the code.
+/eg/ is not a testing suite; instead it acts as a supplement, conceptually being a scratchpad somewhere between the REPL and a full-blown testing suite.
 
-* Keybindings
+The goal of /eg/ is to 1) make development of pure functions fast, and 2) provide persistent scratchpads for each pure function.
 
-~C-+~ for eg-run-examples, which displays your examples inline and runs them.
+To make development fast, /eg/ tries hard to never leave the current buffer; everything should happen in-line, whenever possible. Thus we prefer in-line display over the echo area. A simple performance metric of /eg/ is how close the information desired is to where the cursor is currently.
+
+To have persistent scratchpads, /eg/ stores examples specific to each pure function. Thus when you change the implementation details of a pure function, you can rerun your examples for sanity-check. Scratchpads can also naturally act as reminder of how a specific function works.
+
+Function-specific scratchpads, by design, are light and not intended to be full-blown tests. But examples are smaller versions of tests, so contents of scratchpads may evolve into tests.
+
+NOTE: /eg/ does not limit itself to pure nor small functions, but is best fit for such use case.
+
+** Demos
+TODO
+
+** Features
+- ~C-3~ to show your examples inline (TODO: add gif, add keybinding)
+- ~C-4~ to run your examples inline (TODO: add gif, add keybinding)
+- ~C-c'~ to bring up *eg-live* buffer
+  *eg-live* buffer allows you to edit examples associated with current major-mode (i.e. language).
+- ~C-c C-'~ to bring up *eg-live-fn* buffer
+  *eg-live-fn* buffer allows you to edit examples associated with specific function in the language.
+- When used with ~lispy~, ~T~ on a s-expression calls ~lispy-try~ (TODO: change to ~eg-try~), which provides a default form for a function.
+
+* Getting Started
+
+** Installation
+TODO
+
+** Configuration Instructions
+- ~eg-sort-on-save~
+- ~eg-ask-save-on-ext~
+- ~eg-save-on-every-update~
+- ~eg-live-window-height~
+
+* Conceptual Explanation
+** Comparison with REPL
+/eg/ and REPL may be used in conjunction. Examples in /eg/, as how I use them, are exemplar of the pure function. Since they are persistent, they are a bit more structured than the REPL. By comparison, you have more control over the REPL, and results are discarded. However, I find that for pure functions, the dev cycle with /eg/ is much faster and more sensible.
+
+** Comparison with Testing Suite
+/eg/ and testing suite are orthogonal since their use cases are different. For structured, long tests, use a testing suite. If you want to test and record small examples, use /eg/.
+
+* Footnote
+/eg/ is inspired by [[https://github.com/abo-abo/lispy][lispy]] and [[https://hackage.haskell.org/package/QuickCheck][quickcheck]].
