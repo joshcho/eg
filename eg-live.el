@@ -36,7 +36,6 @@
         (setq eg-examples current-examples)
         (message "eg-examples synced")))))
 
-
 (defvar eg-live-fn-buffer-name "*eg-live-fn*")
 (defvar eg-live-fn-toggle-key (kbd "C-c C-'"))
 (define-minor-mode eg-live-fn-mode
@@ -60,15 +59,19 @@
                 'eg-live-fn-run-toggle)
     map))
 
-(let (buffer-fn)
+
+(let (buffer-fn buffer-lang)
   (defun eg-live-fn ()
     (interactive)
     (setq buffer-fn (if (member (eg--operator) (eg--get-functions))
                         (eg--operator)
                       (eg--ask-for-function "Function to Edit: "))) ; TODO: add preview options here
+    (setq buffer-lang (eg--current-lang))
     (eg--setup-buffer eg-live-fn-buffer-name
                       (concat (format ";; %s\n" buffer-fn)
-                              (prin1-to-string (eg--get-examples buffer-fn))))
+                              (prin1-to-string
+                               (mapcar #'eg--print-example (eg--get-examples buffer-fn buffer-lang)))))
+    (emacs-lisp-mode)
     (eg-live-fn-mode)
     )
 
@@ -108,27 +111,23 @@
       (setq buffer-fn temp-fn))
     (eg--setup-buffer eg-live-fn-buffer-name
                       (concat (format ";; %s\n" buffer-fn)
-                              (prin1-to-string (eg--get-examples buffer-fn))))
+                              (prin1-to-string (eg--get-examples buffer-fn buffer-lang))))
     (eg-live-fn-mode))
 
   (defun eg--sync-live-fn-if-modified ()
     (when buffer-fn
       (let ((current-fn-examples (read (buffer-string))))
-        (unless (equal (eg--get-examples buffer-fn) current-fn-examples)
-          (eg--update-examples buffer-fn current-fn-examples)
+        (unless (equal (eg--get-examples buffer-fn buffer-lang) current-fn-examples)
+          (eg--update-examples buffer-fn current-fn-examples buffer-lang)
           (message "eg-examples synced for %s" buffer-fn))))))
 
-(defun eg--setup-buffer (buffer-name buffer-string)
+(cl-defun eg--setup-buffer (buffer-name buffer-string)
   "Create new buffer with BUFFER-NAME and BUFFER-STRING. Subroutine of eg-live-fn and eg-live."
   (get-buffer-create buffer-name)
-  (let ((stored-major-mode major-mode)) ; FIXME: Language should be specified in the data structure
-    (unless (equal (buffer-name (current-buffer)) buffer-name)
-      (switch-to-buffer-other-window buffer-name)
-      (set-window-text-height (get-buffer-window) eg-live-window-height))
-    (erase-buffer)
-    (cond
-     ((equal stored-major-mode 'emacs-lisp-mode) (emacs-lisp-mode))
-     ((equal stored-major-mode 'lisp-mode) (lisp-mode))))
+  (unless (equal (buffer-name (current-buffer)) buffer-name)
+    (switch-to-buffer-other-window buffer-name)
+    (set-window-text-height (get-buffer-window) eg-live-window-height))
+  (erase-buffer)
   (insert buffer-string)
   (lispy-multiline)
   (beginning-of-buffer)
@@ -136,7 +135,6 @@
   )
 
 (general-def
-  :keymaps 'lispy-mode-map
+  :keymaps '(emacs-lisp-mode-map lisp-mode-map python-mode-map)
   eg-live-toggle-key 'eg-live
-  eg-live-fn-toggle-key 'eg-live-fn
-  )
+  eg-live-fn-toggle-key 'eg-live-fn)

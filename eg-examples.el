@@ -1,7 +1,6 @@
 ;; eg-examples. changes made by hand may be overwritten. if you made changes, make sure to call eg-load-examples to sync eg-examples with your file.
 ((emacs-lisp (+ (+ 1 2)
                 (+ 2 3)
-                (+ 4 7)
                 (+ 3 3)
                 (+ 4 5)
                 (+ 6 7))
@@ -50,4 +49,7 @@
        (remove (remove "a" '(("a" . b)
                              ("c" . d))
                        :key #'car :test #'equal))
-       (window-by-number (window-by-number 0)))))
+       (window-by-number (window-by-number 0)))
+ (python (len "len([1,2,3])")
+         (max "max(range(4))")
+         (range "list(range(1,4))"))))

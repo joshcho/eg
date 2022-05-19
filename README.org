@@ -28,6 +28,10 @@ TODO
   *eg-live-fn* buffer allows you to edit examples associated with specific function in the language.
 - When used with ~lispy~, ~T~ on a s-expression calls ~lispy-try~ (TODO: change to ~eg-try~), which provides a default form for a function.
 
+** Supported Languages
+
+Support for emacs lisp and common lisp are first-class, with python coming next. I have no experience with clojure, so support for clojure (which I imagine isn't too difficult) in the form of pull requests is welcome.
+
 * Getting Started
 
 ** Installation
