@@ -59,8 +59,8 @@
                 'eg-live-fn-run-toggle)
     map))
 
-
 (let (buffer-fn buffer-lang)
+  ;; TODO: Refactor all these functions to use common core
   (defun eg-live-fn ()
     (interactive)
     (setq buffer-fn (if (member (eg--operator) (eg--get-functions))
@@ -70,7 +70,7 @@
     (eg--setup-buffer eg-live-fn-buffer-name
                       (concat (format ";; %s\n" buffer-fn)
                               (prin1-to-string
-                               (mapcar #'eg--print-example (eg--get-examples buffer-fn buffer-lang)))))
+                               (eg--get-examples buffer-fn buffer-lang))))
     (emacs-lisp-mode)
     (eg-live-fn-mode)
     )
@@ -79,7 +79,7 @@
     (interactive)
     (let ((examples (read (buffer-string))))
       (erase-buffer)
-      (insert (format ";; %s\n" (prin1-to-string buffer-fn)))
+      (insert (format ";; %s\n" buffer-fn))
       (cl-loop
        initially (insert "(")
        for e in examples
@@ -95,7 +95,7 @@
       (if showing-runs
           (let ((examples (read (buffer-string))))
             (erase-buffer)
-            (insert (format ";; %s\n" (prin1-to-string buffer-fn)))
+            (insert (format ";; %s\n" buffer-fn))
             (insert (prin1-to-string examples))
             (lispy-multiline)
             (beginning-of-buffer))

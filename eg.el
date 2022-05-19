@@ -33,35 +33,36 @@
 ;; Boston, MA 02110-1301, USA.
 
 ;; Bugs
-;; 1. If a function is not defined, any eg-whatever in (function @args) doesn't work.
-;; 2. Gracefully handle if an example is broken
-;; 3. Remove examples is broken
-;; 4. Functions that use lispy--show-inline are all broken.
-;; 5. Weird behavior when calling run-examples (probably) from eg-live-fn buffer
-;; 6. Mark set when eg-live or eg-live-fn?
-;; 7. Watch for performance with benchmark
+;; 1. Weird behavior when calling run-examples (probably) from eg-live-fn buffer
+;; 2. Mark set when eg-live or eg-live-fn?
+;; 3. Watch for performance with benchmark
+;; 4. Adjoin doesn't work properly with function selection completing-read
+;; 5. When adding examples, being at end of sexp doesn't work
 
 ;; TODO
-;; 1. Evaluation for other languages (e.g. python)
+;; 1. Polish support for python
 ;; 2. Add expected value?
 ;; 3. Provide an option to evaluate current expression as well when calling eg-run-examples
-;; 4. Align test results
-;; 5. Show recommended function first (instead of last)
-;; 6. Add interactive add example (like eg-live)
-;; 7. Add multiline support for inline displays
-;; 8. Allow persistent commented tests
-;; 9. Separate examples for different languages (and load them separately, too)
-;; 10. Make lang into keyword, not optional
-;; 11. Differentiate between my keybindings and general keybindings (use-package just for myself)
-;; 12. Fix some porting issues in README (consider markdown)
-;; 13. Consider orthogonalizing further as needed by python integration
+;; 4. Show recommended function first (instead of last)
+;; 5. Add interactive add example (like eg-live)
+;; 6. Add multiline support for inline displays
+;; 7. Allow persistent commented tests
+;; 8. Separate examples for different languages (and load them separately, too)
+;; 9. Make lang into keyword, not optional
+;; 10. Differentiate between my keybindings and general keybindings (use-package just for myself)
+;; 11. Fix some porting issues in README (consider markdown)
+;; 12. Consider orthogonalizing further as needed by python integration
+;; 13. Add truncate options for long results
+;; 14. Figure out &optional and langs (probably with global variable eg-live-fn-lang or something)
+;; 15. Better name than eg?
 
 ;; TODO for python support
 ;; 1. Integrate with lsp?
 
 ;; TODO for eg-live-fn
 ;; 1. Display header instead of comment
-;; 2. Think of better distinction between eg-live and eg-live-fn
+;; 2. Think of better names for eg-live and eg-live-fn (maybe *eg-raw* and *eg-scratch*?) fscratch?
+;;    Hmm... fscratch? pscratch?
 ;; 3. *Live preview of examples as you scroll through, maybe use consult?*
 ;; 4. Gracefully handle keyboard exits in completing-read as per
 ;; https://emacs.stackexchange.com/questions/20974/exit-minibuffer-and-execute-a-command-afterwards
@@ -71,6 +72,8 @@
 ;; 8. Refactor buffer-fn and buffer-lang
 ;; 9. Better display of non-lisp examples
 ;; 10. Maybe take inspiration from magit?
+;; 11. Refactor most functions in eg-live-fn
+;; 12. Add better support for python
 
 ;;; Code:
 
@@ -169,8 +172,8 @@
   ;; (eg--prettify-eg-examples)
   )
 
-(defun eg--funcall-when (pred function argument)
-  "Beware that it runs on single ARGUMENT, not arguments."
+(defun funcall-when (pred function argument)
+  "When PRED, runs funcall with FUNCTION and ARGUMENT. Otherwise, return ARGUMENT."
   (if pred
       (funcall function argument)
     argument))
@@ -198,15 +201,15 @@
           (erase-buffer)
           (insert ";; " eg-examples-doc "\n")
           (insert (prin1-to-string
-                   (eg--funcall-when eg-sort-on-save
-                                     #'eg--sort-stored
-                                     (eg--local->stored eg-examples))))
+                   (funcall-when eg-sort-on-save
+                                 #'eg--sort-stored
+                                 (eg--local->stored eg-examples))))
           (lispy-multiline) ; FIXME: get rid of this dependency if possible
           (insert ")")
           (save-buffer)
           (unless buffer-already-open
             (kill-buffer))))
-    (message "Examples not modified since load, not saning.")))
+    (message "Examples not modified since load, not saving.")))
 
 (defvar eg-save-on-every-update nil
   "If t, then eg saves every time add or remove occurs. Otherwise, you have to save current state of examples manually through eg-save-examples.")
@@ -245,16 +248,18 @@
   "Check if EXPR is def expression (e.g. defun, defmacro, defgeneric)."
   (member (first expr) '(cl-defun cl-defmacro defun defmacro defgeneric)))
 
-(cl-defun eg--operator (&optional (expr (eg--current-list)) (lang (eg--current-lang)))
-  "Returns the operator in EXPR."
-  (if (equal lang 'python)
-      (intern (lispy--current-function))
-    (when expr
-      (when (equal (first expr) 'quote)
-        (setq expr (second expr)))
-      (if (eg--def-p expr)
-          (second expr)
-        (first expr)))))
+(cl-defun eg--operator ()
+  "Returns the operator in current form."
+  (let ((expr (eg--current-list))
+        (lang (eg--current-lang)))
+    (if (equal lang 'python)
+        (intern (lispy--current-function))
+      (when expr
+        (when (equal (first expr) 'quote)
+          (setq expr (second expr)))
+        (if (eg--def-p expr)
+            (second expr)
+          (first expr))))))
 
 ;; (cl-defun eg--args (&optional (expr (eg--current-list)))
 ;;   "Returns the args in EXPR."
@@ -296,9 +301,13 @@
       (prin1-to-string example)
     example))
 
+(cl-defun eg--print-examples (examples &optional (lang (eg--current-lang)))
+  (string-join (mapcar #'(lambda (e) (eg--print-example e lang)) examples)
+               "\n"))
+
 (defvar lisp-languages '(lisp emacs-lisp))
 
-(cl-defun eg--examples-to-string (fn &optional (print-function #'eg--print-example) (lang (eg--current-lang)))
+(cl-defun eg--examples-to-string (fn &optional (print-examples-function #'eg--print-examples) (lang (eg--current-lang)))
   "Get string of examples associated with LANG and FN."
   (let ((examples (eg--get-examples fn lang)))
     (if (null examples)
@@ -306,16 +315,45 @@
                 (if eg-print-functions-uppercase
                     (upcase (prin1-to-string fn))
                   fn))
-      (string-join (mapcar print-function examples)
-                   "\n"))))
+      (funcall print-examples-function examples))))
 
+(defvar eg-align-test-results t)
 (cl-defun eg--run-examples-to-string (fn &optional (lang (eg--current-lang)))
   "Get string of examples associated with LANG and FN with run."
-  (eg--examples-to-string fn #'(lambda (e)
-                                 (let ((example-string (eg--print-example e lang)))
-                                   (concat example-string
-                                           " => "
-                                           (lispy--eval example-string))))))
+  (eg--examples-to-string fn #'(lambda (examples)
+                                 (string-join
+                                  (eg--align-strings
+                                   (mapcar
+                                    (lambda (e)
+                                      (let* ((example-string (eg--print-example e lang))
+                                             (eval-result
+                                              (condition-case nil
+                                                  (lispy--eval example-string)
+                                                (error "Error..."))))
+                                        (if (string-empty-p eval-result)
+                                            example-string
+                                          (concat example-string
+                                                  " => "
+                                                  eval-result))))
+                                    examples)
+                                   "=>")
+                                  "\n"))))
+
+(defun eg--align-strings (strings substring)
+  "Align strings in STRINGS that have SUBSTRING by SUBSTRING."
+  (cl-loop for s in strings
+           for pos = (cl-search substring s)
+           maximize (if pos pos (+ 1 (length s))) into pad-pos
+           collect pos into pos-list
+           collect (if pos
+                       (cons (substring s 0 pos)
+                             (substring s pos))
+                     (cons s ""))
+           into substring-pairs
+           finally
+           (return (mapcar (lambda (pair)
+                             (concat (string-pad (car pair) pad-pos) (cdr pair)))
+                           substring-pairs))))
 
 (defun eg--current-lang ()
   (case major-mode
@@ -404,7 +442,7 @@
   (eg-modify-example "Associated function: "
                      #'eg--query-example-for-add
                      #'eg--perform-add-example
-                     "Added %s from %s"
+                     "Added %s to %s"
                      "%s already an example in %s"))
 
 (defun eg--perform-remove-example (example fn)
