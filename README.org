@@ -22,15 +22,15 @@ TODO
 ** Features
 - ~C-3~ to show your examples inline (TODO: add gif, add keybinding)
 - ~C-4~ to run your examples inline (TODO: add gif, add keybinding)
-- ~C-c'~ to bring up *eg-live* buffer
-  *eg-live* buffer allows you to edit examples associated with current major-mode (i.e. language).
-- ~C-c C-'~ to bring up *eg-live-fn* buffer
-  *eg-live-fn* buffer allows you to edit examples associated with specific function in the language.
+- ~C-c'~ to bring up *eg-master* buffer
+  *eg-master* buffer allows you to edit all of your examples. This can act as a high-level debugger for your examples.
+- ~C-c C-'~ to bring up *eg-live* buffer
+  *eg-live* buffer allows you to edit examples associated with specific function in the language.
 - When used with ~lispy~, ~T~ on a s-expression calls ~lispy-try~ (TODO: change to ~eg-try~), which provides a default form for a function.
 
 ** Supported Languages
 
-Support for emacs lisp and common lisp are first-class, with python coming next. I have no experience with clojure, so support for clojure (which I imagine isn't too difficult) in the form of pull requests is welcome.
+Support for emacs lisp and common lisp are first-class, with python coming next. I have no experience with clojure, so support for clojure in the form of pull requests is welcome.
 
 * Getting Started
 
