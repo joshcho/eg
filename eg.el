@@ -36,28 +36,29 @@
 ;; 1. Weird behavior when calling run-examples (probably) from eg-live-fn buffer
 ;; 2. Mark set when eg-live or eg-live-fn?
 ;; 3. Watch for performance with benchmark
-;; 4. Adjoin doesn't work properly with function selection completing-read
-;; 5. When adding examples, being at end of sexp doesn't work
-;; 6. Lambda nil printing
+;; 4. When adding examples, being at end of sexp doesn't work
+;; 5. Lambda nil printing
 
 ;; TODO
 ;; 1. Polish support for python
 ;; 2. Add expected value? Cached value?
 ;; 3. Provide an option to evaluate current expression as well when calling eg-run-examples
-;; 4. Show recommended function first (instead of last)
-;; 5. Add interactive add example (like eg-live)
-;; 6. Add multiline support for inline displays
-;; 7. Allow persistent commented tests
-;; 8. Separate examples for different languages (and load them separately, too)
-;; 9. Make lang into keyword, not optional
-;; 10. Differentiate between my keybindings and general keybindings (use-package just for myself)
-;; 11. Fix some porting issues in README (consider markdown)
-;; 12. Consider orthogonalizing further as needed by python integration
-;; 13. Add truncate options for long results
-;; 14. Figure out &optional and langs (probably with global variable eg-live-fn-lang or something)
-;; 15. Better name than eg?
-;; 16. Customize format in *eg-live*, list, smart, expressions, etc.
-;; 17. Async?
+;; 4. Add multiline support for inline displays
+;; 5. Allow persistent commented tests
+;; 6. Separate examples for different languages (and load them separately, too)
+;; 7. Make lang into keyword, not optional
+;; 8. Differentiate between my keybindings and general keybindings (use-package just for myself)
+;; 9. Fix some porting issues in README (consider markdown)
+;; 10. Consider orthogonalizing further as needed by python integration
+;; 11. Add truncate options for long results
+;; 12. Figure out &optional and langs (probably with global variable eg-live-fn-lang or something)
+;; 13. Better name than eg?
+;; 14. Customize format in *eg-live*, list, smart, expressions, etc.
+;; 15. Async?
+;; 16. Add example template as core
+;; 17. Example format should be maintained throughout sessions (don't use sexp's as portable format). If using strings, check validity on save.
+;; 18. Consider different files for things
+;; 19. Add lispy-try support
 
 ;; TODO for python support
 ;; 1. Integrate with lsp?
@@ -399,14 +400,14 @@
 ;; (defvar eg-add-complete-p t "FIXME: Support later. Complete function when adding example.")
 ;; (defvar eg-add-complete-args-p nil   "FIXME: Support later. Complete arguments when adding example. For this to be true, eg-add-complete-p must be true as well.")
 
-(defun eg--completing-read-operator (prompt collection)
-  "Do a `completing-read' with PROMPT on COLLECTION."
+(defun eg--completing-read-operator (prompt collection &optional def)
+  "Do a `completing-read' with PROMPT on COLLECTION with DEF as default value."
   (funcall (if (member (eg--current-lang) lisp-languages)
                #'read
              #'intern)
            (completing-read prompt
-                            (mapcar #'prin1-to-string
-                                    collection))))
+                            collection
+                            nil nil nil nil def)))
 
 (defun eg--read-from-minibuffer-example (prompt initial-value)
   "Do a `read-from-minibuffer' with PROMPT with INITIAL-VALUE."
@@ -418,13 +419,17 @@
 
 (cl-defun eg--ask-for-function (prompt &optional (lang (eg--current-lang)))
   "Ask for function in PROMPT given LANG."
-  (eg--completing-read-operator prompt (append (when-let (op (eg--operator))
-                                                 (list op))
-                                               (eg--get-functions lang))))
+  (let ((function-list (eg--get-functions lang))
+        (op (eg--operator)))
+    (eg--completing-read-operator prompt
+                                  (if op
+                                      (adjoin op function-list)
+                                    function-list)
+                                  op)))
 
-(defun eg--ask-for-language (prompt)
-  "Ask for language in PROMPT."
-  (eg--completing-read-operator prompt (eg--get-languages)))
+;; (defun eg--ask-for-language (prompt)
+;;   "Ask for language in PROMPT."
+;;   (eg--completing-read-operator prompt (eg--get-languages)))
 
 (defun eg--perform-add-example (example fn)
   "Add EXAMPLE to FN."
@@ -476,13 +481,13 @@
   (interactive)
   (message "%s" (eg--get-examples (eg--ask-for-function "Which function to fetch examples from: "))))
 
-(defun eg-get-examples-specify-language ()
-  "Interactive get of examples based on language."
-  (interactive)
-  (let* ((lang (eg--ask-for-language "Which language to fetch examples from: "))
-         (fn (eg--ask-for-function "Which function to fetch examples from: " lang)))
-    (message "%s" (eg--get-examples fn
-                                    lang))))
+;; (defun eg-get-examples-specify-language ()
+;;   "Interactive get of examples based on language."
+;;   (interactive)
+;;   (let* ((lang (eg--ask-for-language "Which language to fetch examples from: "))
+;;          (fn (eg--ask-for-function "Which function to fetch examples from: " lang)))
+;;     (message "%s" (eg--get-examples fn
+;;                                     lang))))
 
 (defun eg-modify-example (fn-prompt get-example perform-function success-prompt fail-prompt)
   "PERFORM-FUNCTION takes example and fn to modify `eg-examples'. This function is used as template for `eg-add-example' and `eg-remove-example'. GET-EXAMPLE takes in fn. Use FN-PROMPT, SUCCESS-PROMPT, and FAIL-PROMPT for interactive queries."

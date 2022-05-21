@@ -79,8 +79,7 @@
 (defvar eg-master-name "*eg-master*")
 
 (defun eg-master ()
-  "If not in 'eg-master' buffer, show 'eg-master' buffer. If in 'eg-master' buffer,
-sync and kill 'eg-master'."
+  "If not in 'eg-master' buffer, show 'eg-master' buffer. If in 'eg-master' buffer, sync and kill 'eg-master'."
   (interactive)
   (if (equal (current-buffer)
              (eg-master-buffer))
@@ -137,6 +136,9 @@ sync and kill 'eg-master'."
     (define-key map
                 (kbd "C-c C-r")
                 'eg-live-run-toggle)
+    (define-key map
+                (kbd "C-c C-r")
+                'eg-live-run-toggle)
     map))
 (defvar eg-live-fn nil)
 (defvar eg-live-lang nil)
@@ -173,20 +175,27 @@ sync and kill 'eg-master'."
          (eg--update-examples eg-live-fn fn-examples eg-live-lang)
          (message "eg-examples synced for %s" eg-live-fn))))))
 
-(defun eg--print-example-strings (fn example-print-function)
-  "Optimized print for performance on examples with FN using EXAMPLE-PRINT-FUNCTION."
-  (string-join (nreverse
-                (cons "\n )"
-                      (nreverse
-                       (cons "("
-                             (-interpose "\n "
-                                         (mapcar example-print-function
-                                                 (eg--get-examples fn eg-live-lang)))))))))
+(defvar eg-new-example-comment " new example")
+(defvar eg-simple-print-threshold 50)
 
-(defun eg-live--populate (string)
-  "Populate 'eg-live' buffer with STRING. If currently in 'eg-live' buffer, preserve point."
-  (eg--populate (eg-live-buffer) string)
-  )
+(defvar eg-always-add-new-example-when-empty nil)
+(defvar eg-do-not-ask-to-add-example nil)
+(defun eg--print-example-strings (fn example-print-function)
+  "Optimized print for performance on examples with FN using EXAMPLE-PRINT-FUNCTION. FIXME: Misnomer, not a print."
+  (let* ((examples (eg--get-examples fn eg-live-lang))
+         (example-strings
+          (if (null examples)
+              (when (and (equal (first (eg--current-list)) fn)
+                         (or eg-always-add-new-example-when-empty
+                             (unless eg-do-not-ask-to-add-example
+                               (yes-or-no-p "Add example under cursor?"))))
+                (list (format "%s ;%s" (eg--current-list) eg-new-example-comment)))
+            (mapcar example-print-function
+                    examples))))
+    (concat "("
+            (string-join (-interpose "\n "
+                                     example-strings))
+            "\n )")))
 
 (defvar eg-showing-runs nil)
 
@@ -199,6 +208,7 @@ sync and kill 'eg-master'."
 
 (defun eg-live-populate-examples (fn)
   "Populate 'eg-live' buffer with examples of FN."
+  (message "%s" fn)
   (setq eg-live-fn fn
         eg-showing-runs nil)
   (eg--populate
@@ -218,7 +228,9 @@ sync and kill 'eg-master'."
                                           (let ((example-string (prin1-to-string e)))
                                             (format "%s ; => %s" example-string
                                                     (lispy--eval example-string)
-                                                    )))))))
+                                                    )))))
+   (lispy-multiline)))
+
 
 (defun eg-live-buffer ()
   "Return 'eg-live' buffer, creating a new one if needed."
