@@ -71,6 +71,10 @@
 ;; 6. Maybe take inspiration from magit?
 ;; 7. Add better support for python
 ;; 8. Sync when window is deleted, but don't close (undo doesn't work otherwise). When closing, try to sync.
+;; 9. eg-live should add current example maybe when no examples exist
+
+;; THUNKS
+;; 1. Take a look at math/scratch.lisp. Maybe more interactive ways of modifying content?
 
 ;;; Code:
 
