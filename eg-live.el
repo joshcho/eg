@@ -48,12 +48,16 @@
          (forward-line (car old-position))
          (forward-char (cdr old-position))))))
 
+(defvar eg-live-and-master-multiline t
+  "Run 'lispy-multiline' after visiting 'eg-live' or 'eg-master'. May be slow with many examples.")
 (defun eg--populate (buffer string)
   "Populate BUFFER with STRING. Preserve point if current buffer is BUFFER."
   (save-point (equal buffer (current-buffer))
     (with-current-buffer buffer
       (erase-buffer)
       (insert string)
+      (when eg-live-and-master-multiline
+        (lispy-multiline))
       (goto-char (point-min)))))
 
 (defvar eg-window-height 16)
@@ -77,7 +81,6 @@
     map))
 
 (defvar eg-master-name "*eg-master*")
-
 (defun eg-master ()
   "If not in 'eg-master' buffer, show 'eg-master' buffer. If in 'eg-master' buffer, sync and kill 'eg-master'."
   (interactive)
@@ -160,7 +163,6 @@
       (eg-switch-to-other-window-and-resize (eg-live-buffer))))
   )
 
-
 (defmacro with-eg-live (&rest body)
   "Perform BODY in 'eg-live' buffer."
   `(with-current-buffer (eg-live-buffer)
@@ -208,7 +210,6 @@
 
 (defun eg-live-populate-examples (fn)
   "Populate 'eg-live' buffer with examples of FN."
-  (message "%s" fn)
   (setq eg-live-fn fn
         eg-showing-runs nil)
   (eg--populate

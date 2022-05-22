@@ -38,6 +38,7 @@
 ;; 3. Watch for performance with benchmark
 ;; 4. When adding examples, being at end of sexp doesn't work
 ;; 5. Lambda nil printing
+;; 6. Add (and probably remove) are broken.
 
 ;; TODO
 ;; 1. Polish support for python
@@ -407,7 +408,8 @@
              #'intern)
            (completing-read prompt
                             collection
-                            nil nil nil nil def)))
+                            nil nil nil nil (when def
+                                              (prin1-to-string def)))))
 
 (defun eg--read-from-minibuffer-example (prompt initial-value)
   "Do a `read-from-minibuffer' with PROMPT with INITIAL-VALUE."
@@ -419,7 +421,7 @@
 
 (cl-defun eg--ask-for-function (prompt &optional (lang (eg--current-lang)))
   "Ask for function in PROMPT given LANG."
-  (let ((function-list (eg--get-functions lang))
+  (let ((function-list (eg--get-functions))
         (op (eg--operator)))
     (eg--completing-read-operator prompt
                                   (if op
@@ -513,8 +515,8 @@
 (global-set-key (kbd "C-c C-e") 'eg-command-map)
 
 (general-def
-  :keymaps '(lisp-mode-map emacs-lisp-mode-map python-mode-map)
-  "C-+" 'eg-run-examples)
+  :keymaps '(lisp-mode-map emacs-lisp-mode-map python-mode-map lispy-mode-map)
+  "C-4" 'eg-run-examples)
 
 (general-def
   :keymaps 'python-mode-map

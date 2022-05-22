@@ -20,11 +20,12 @@ NOTE: /eg/ does not limit itself to pure nor small functions, but is best fit fo
 TODO
 
 ** Features
-- ~C-3~ to show your examples inline (TODO: add gif, add keybinding)
-- ~C-4~ to run your examples inline (TODO: add gif, add keybinding)
-- ~C-c'~ to bring up *eg-master* buffer
+- ~C-3~ to show your examples inline (TODO: add gif, add keybinding) ~eg-show-examples~
+- ~C-4~ to run your examples inline (TODO: add gif, add keybinding) ~eg-run-examples-incrementally~
+  Examples are run, and results are displayed as soon as they are available.
+- ~C-c apostrophe~ to bring up *eg-master* buffer ~eg-master~
   *eg-master* buffer allows you to edit all of your examples. This can act as a high-level debugger for your examples.
-- ~C-c C-'~ to bring up *eg-live* buffer
+- ~C-c C-apostrophe~ to bring up *eg-live* buffer ~eg-live~
   *eg-live* buffer allows you to edit examples associated with specific function in the language.
 - When used with ~lispy~, ~T~ on a s-expression calls ~lispy-try~ (TODO: change to ~eg-try~), which provides a default form for a function.
 
