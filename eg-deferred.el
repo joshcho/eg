@@ -35,22 +35,21 @@
 ;; TODO:
 ;; 1. Add a way for deferred operations to halt if a new one is called. Probably using gensym and id's?
 ;; 2. Better name than 'eg-deferred'
+;; 3. Move this to main file
 
 ;;; Code:
 (require 'dash)
 (require 'deferred)
 
-(defvar eg-examples-running nil)
-(defun eg-run-examples-incrementally ()
-  "Run examples incrementally, updating inline display as soon as results are available. Running this while examples are running will stop remaining tasks as soon as possible."
+(defvar eg-run-examples-deferred nil
+  "When t, uses 'deferred' to show examples as soon as they are available. Set this to nil if you are only working with small functions.")
+(defun eg-run-examples ()
+  "Run examples for appropriate function under cursor. Can be customized to run without deferred FIXME: add custom variable and update doc."
   (interactive)
   (let ((examples (eg--get-examples (eg--operator))))
     (if (null examples)
         (lispy--show-inline (format "No examples associated with %s."
-                                    (funcall (if eg-print-functions-uppercase
-                                                 (-compose #'upcase #'prin1-to-string)
-                                               #'identity)
-                                             (eg--operator))))
+                                    (eg--operator)))
       (save-excursion
         (lispy--back-to-paren)
         (unless (and (prog1 (lispy--cleanup-overlay)
@@ -59,20 +58,33 @@
                      (= lispy-hint-pos (point)))
           (cond ((memq major-mode lispy-elisp-modes)
                  (setq lispy-hint-pos (point))
-                 (eval `(eg--deferred-eval-inline ,examples)))
+                 (if eg-run-examples-deferred
+                     (eval `(eg--deferred-eval-inline ,examples))
+                   (eg--eval-inline examples)))
                 (t (error "%s isn't supported currently" major-mode))))))))
 
+(defun eg--eval-inline (examples)
+  "Evaluate EXAMPLES in order and display results inline at the end. See 'eg--deferred-eval-inline' for displaying evaluated results as soon as they are available."
+  (eg--show-strings-inline
+   (cl-loop for e in examples
+            collect
+            (format "%s => %s" e
+                    (condition-case nil
+                        (eval e)
+                      (error "Eval error"))))))
+
 (defmacro eg--deferred-eval-inline (examples)
-  "Generates deferred chain where EXAMPLES are evaluated in order, and displayed inline using 'lispy--show-strings-inline' as soon as results are available."
+  "Evaluate EXAMPLES in order and display results inline as soon as they are available."
   `(progn
      (lispy--show-strings-inline '("...") ,(length examples))
      (deferred:$
       (deferred:next
        (lambda ()
          (let* ((e ',(first examples))
-                (res (prin1-to-string
-                      (eval e))))
-           (lispy--show-strings-inline (list (format "%s => %s" e res)) ,(length examples))
+                (res (condition-case nil
+                         (eval e)
+                       (error "Eval error"))))
+           (eg--show-strings-inline (list (format "%s => %s" e res)) ,(length examples))
            (list res))))
       ,@(cl-loop
          with n = (length examples)
@@ -80,23 +92,49 @@
          collect
          `(deferred:nextc it
             (lambda (res-acc)
-              (setq res-acc (-snoc res-acc (eval ',(nth i examples))))
-              (lispy--show-strings-inline (mapcar* (lambda (e res) (format "%s => %s"
-                                                                      e res))
-                                                   ',(-take (+ i 1) examples)
-                                                   res-acc)
-                                          ,n)
+              (setq res-acc (-snoc res-acc (condition-case nil
+                                               (eval ',(nth i examples))
+                                             (error "Eval error"))))
+              (eg--show-strings-inline (mapcar* (lambda (e res) (format "%s => %s"
+                                                                   e res))
+                                                ',(-take (+ i 1) examples)
+                                                res-acc)
+                                       ,n)
               res-acc))))))
 
-(defun lispy--show-strings-inline (strings display-height)
-  "Incrementally show STRINGS inline in display of DISPLAY-HEIGHT"
+(defvar eg-align-test-results t)
+(defun eg--align-strings (strings substring)
+  "Align strings in STRINGS that have SUBSTRING by SUBSTRING."
+  (cl-loop for s in strings
+           for pos = (cl-search substring s)
+           maximize (if pos pos (+ 1 (length s))) into pad-pos
+           collect pos into pos-list
+           collect (if pos
+                       (cons (substring s 0 pos)
+                             (substring s pos))
+                     (cons s ""))
+           into substring-pairs
+           finally
+           (return (mapcar (lambda (pair)
+                             (concat (string-pad (car pair) pad-pos) (cdr pair)))
+                           substring-pairs))))
+
+(defun eg--show-strings-inline (strings &optional display-height)
+  "Show STRINGS inline in display of DISPLAY-HEIGHT."
   (save-excursion
     (goto-char lispy-hint-pos)
-    (lispy--show (propertize (string-join (append strings (-repeat (- display-height (length strings)) "...")) "\n") 'face 'lispy-face-hint))))
+    (lispy--show (propertize (string-join
+                              (eg--align-strings
+                               (append strings
+                                       (when display-height
+                                         (-repeat (- display-height (length strings)) "...")))
+                               "=>")
+                              "\n")
+                             'face 'lispy-face-hint))))
 
 (general-def
   :keymaps '(lisp-mode-map emacs-mode-map lispy-mode-map)
-  "C-+" 'eg-run-examples-incrementally)
+  "C-+" 'eg-run-examples)
 
 (provide 'eg-deferred)
 

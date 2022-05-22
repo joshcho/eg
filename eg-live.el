@@ -38,7 +38,7 @@
 (require 'dash)
 
 (defmacro save-point (pred &rest body)
-  "If PRED, save point before executing BODY, and restored point."
+  "If PRED, save point before executing BODY, and restore point."
   `(progn
      (let ((old-position (when ,pred
                            (cons (line-number-at-pos)
@@ -48,16 +48,12 @@
          (forward-line (car old-position))
          (forward-char (cdr old-position))))))
 
-(defvar eg-live-and-master-multiline t
-  "Run 'lispy-multiline' after visiting 'eg-live' or 'eg-master'. May be slow with many examples.")
 (defun eg--populate (buffer string)
   "Populate BUFFER with STRING. Preserve point if current buffer is BUFFER."
   (save-point (equal buffer (current-buffer))
     (with-current-buffer buffer
       (erase-buffer)
       (insert string)
-      (when eg-live-and-master-multiline
-        (lispy-multiline))
       (goto-char (point-min)))))
 
 (defvar eg-window-height 16)
@@ -174,14 +170,16 @@
     (with-eg-live
      (let ((fn-examples (read (buffer-string))))
        (unless (equal (eg--get-examples eg-live-fn eg-live-lang) fn-examples)
-         (eg--update-examples eg-live-fn fn-examples eg-live-lang)
+         (eg--set-examples eg-live-fn fn-examples eg-live-lang)
          (message "eg-examples synced for %s" eg-live-fn))))))
 
 (defvar eg-new-example-comment " new example")
 (defvar eg-simple-print-threshold 50)
 
-(defvar eg-always-add-new-example-when-empty nil)
-(defvar eg-do-not-ask-to-add-example nil)
+(progn
+  ;; combine the following into one variable like eg-add-rules
+  (defvar eg-always-add-new-example-when-empty nil)
+  (defvar eg-do-not-ask-to-add-example nil))
 (defun eg--print-example-strings (fn example-print-function)
   "Optimized print for performance on examples with FN using EXAMPLE-PRINT-FUNCTION. FIXME: Misnomer, not a print."
   (let* ((examples (eg--get-examples fn eg-live-lang))
@@ -191,7 +189,7 @@
                          (or eg-always-add-new-example-when-empty
                              (unless eg-do-not-ask-to-add-example
                                (yes-or-no-p "Add example under cursor?"))))
-                (list (format "%s ;%s" (eg--current-list) eg-new-example-comment)))
+                (list (format ";;%s\n%s" eg-new-example-comment (eg--current-list))))
             (mapcar example-print-function
                     examples))))
     (concat "("
@@ -208,6 +206,8 @@
       (eg-live-populate-examples eg-live-fn)
     (eg-live-populate-examples-and-run eg-live-fn)))
 
+;; (defvar eg-live-and-master-multiline t
+;;   "Run 'lispy-multiline' after visiting 'eg-live' or 'eg-master'. May be slow with many examples.")
 (defun eg-live-populate-examples (fn)
   "Populate 'eg-live' buffer with examples of FN."
   (setq eg-live-fn fn
@@ -230,7 +230,7 @@
                                             (format "%s ; => %s" example-string
                                                     (lispy--eval example-string)
                                                     )))))
-   (lispy-multiline)))
+   ))
 
 
 (defun eg-live-buffer ()
