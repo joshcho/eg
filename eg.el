@@ -6,7 +6,7 @@
 ;; URL: https://github.com/joshcho/eg
 ;; Version: alpha
 ;; Keywords: convenience
-;; Package-Requires: (lispy cl-format) FIXME: remove dependencies
+;; Package-Requires: (lispy ht anaphora dash)
 
 ;; This file is not part of GNU Emacs.
 
@@ -35,36 +35,30 @@
 ;; Bugs
 ;; 1. Weird behavior when calling run-examples (probably) from eg-live-fn buffer
 ;; 2. Mark set when eg-live or eg-live-fn?
-;; 3. Watch for performance with benchmark
-;; 4. There are some performance issues with memory?
-;; 5. New example broken when string is in arg
-;; 6. Operator broken when in comment
-;; 7. Broken with cl-format
+;; 3. There are some performance issues after long use? Memory issues maybe
+;; 4. New example broken when string is in arg
+;; 5. Operator broken when in comment
 
 ;; TODO
 ;; 1. Polish support for python
 ;; 2. Provide an option to evaluate current expression as well when calling eg-run-examples
 ;; 3. Allow persistent commented tests
 ;; 4. Differentiate between my keybindings and general keybindings (use-package just for myself)
-;; 5. Add truncate options for long results
-;; 6. Figure out &optional and langs (probably with global variable eg-live-fn-lang or something)
-;; 7. Better name than eg?
-;; 8. Add lispy-try support
-;; 9. Remove eg-master
+;; 5. Better name than eg?
+;; 6. Add lispy-try support
+;; 7. Remove eg-master
+;; 8. Use text instead of s-expressions for speed and portability
+;; 9. Enable multiline expressions
+;; 10. Add defcustoms
 
 ;; TODO for python support
-;; 1. Integrate with lsp?
-;; 2. (setq python-indent-guess-indent-offset-verbose nil) is needed?
+;; 1. (setq python-indent-guess-indent-offset-verbose nil) is needed?
 
 ;; TODO for eg-live
 ;; 1. Think of better names for eg-master and eg-live
 ;; 2. *Live preview of examples as you scroll through, maybe use consult?*
-;; 3. Better display of non-lisp examples
-;; 4. Maybe take inspiration from magit?
-;; 5. Sync when window is deleted, but don't close (undo doesn't work otherwise). When closing, try to sync.
-
-;; THUNKS
-;; 1. Take a look at math/scratch.lisp. Maybe more interactive ways of modifying content?
+;; 3. Maybe take inspiration from magit?
+;; 4. Sync when window is deleted, but don't close (undo doesn't work otherwise). When closing, try to sync.
 
 ;;; Code:
 
@@ -72,6 +66,7 @@
 (require 'thingatpt)
 (require 'ht)
 (require 'anaphora)
+(require 'dash)
 
 (defgroup eg nil
   "Configuration for eg."
@@ -143,8 +138,9 @@
                               #'eg--sort-stored
                             #'identity)
                           (eg--local->stored eg-examples))))
-        (lispy-multiline))
-    (message "Examples not modified since last load, skip saving.")))
+        (lispy-multiline)
+        (message "Examples saved to %s" eg-file))
+    (message "Examples not modified since last load, skip saving")))
 
 (defvar eg-ask-save-on-exit t
   "If t, ask to save on exiting Emacs.")
@@ -199,25 +195,25 @@
 
 (defun eg--operator ()
   "Return `appropriate` function name. If in a def- expression, return the function being defined. Otherwise, return the function of the current list."
-  (if (eql major-mode 'python-mode)
-      (awhen (thing-at-point 'symbol)
-        (cond ((save-excursion
-                 (beginning-of-thing 'symbol)
-                 (eql (char-before) ?.))
-               (intern (buffer-substring (lispy--python-beginning-of-object) (cdr (bounds-of-thing-at-point 'symbol)))))
-              ((save-excursion
-                 (end-of-thing 'symbol)
-                 (eql (char-after) ?.))
-               (intern (buffer-substring (car (bounds-of-thing-at-point 'symbol)) (lispy--python-end-of-object))))
-              (t
-               (intern it))))
-    (let ((expr (eg--current-list)))
-      (when expr
-        (when (equal (first expr) 'quote)
-          (setq expr (second expr)))
-        (if (member (first expr) '(cl-defun cl-defmacro defun defmacro defgeneric))
-            (second expr)
-          (first expr))))))
+  (if (member major-mode eg-lisp-modes)
+      (let ((expr (eg--current-list)))
+        (when expr
+          (when (equal (first expr) 'quote)
+            (setq expr (second expr)))
+          (if (member (first expr) '(cl-defun cl-defmacro defun defmacro defgeneric))
+              (second expr)
+            (first expr))))
+    (awhen (thing-at-point 'symbol)
+      (cond ((save-excursion
+               (beginning-of-thing 'symbol)
+               (eql (char-before) ?.))
+             (intern (buffer-substring (lispy--python-beginning-of-object) (cdr (bounds-of-thing-at-point 'symbol)))))
+            ((save-excursion
+               (end-of-thing 'symbol)
+               (eql (char-after) ?.))
+             (intern (buffer-substring (car (bounds-of-thing-at-point 'symbol)) (lispy--python-end-of-object))))
+            (t
+             (intern it))))))
 
 (cl-defun eg--get-examples (fn)
   "Get examples associated with FN in `eg-examples'."
@@ -260,7 +256,7 @@
 
 (general-def
   :prefix "C-c C-e"
-  :keymaps '(lisp-mode-map emacs-lisp-mode-map python-mode-map)
+  :keymaps 'global-map
   "C-s" 'eg-save-examples
   "C-l" 'eg-load-examples
   )

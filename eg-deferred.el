@@ -6,14 +6,13 @@
 ;; URL: https://github.com/joshcho/eg
 ;; Version: alpha
 ;; Keywords: convenience
-;; Package-Requires: (lispy cl-format) FIXME: remove dependencies
+;; Package-Requires: (lispy cl-format) FIXME: remove dependencies?
 
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
 
-;; Add, remove, or run examples for a function. Displays examples
-;; right there, inline, to lessen context-switching.
+;; Run eg examples, deferred or otherwise
 
 ;;; License:
 
@@ -35,19 +34,28 @@
 ;; TODOS:
 ;; 1. Add a way for deferred operations to halt if a new one is called. Probably using gensym and id's?
 ;; 2. Better name than 'eg-deferred'
-;; 3. Show which function is running at the moment, with something like function-name => ?
-;; 4. Animation in overlay using deferred?
-;; 5. Propertize strings based on mode?
-
-;; BUGS:
-;; 1. eg-format is broken, needs refactoring and printing strings properly (see examples with 'format')
+;; 3. Animation in overlay using deferred?
+;; 4. Propertizing strings shouldn't propertize "Eval error"
 
 ;;; Code:
 (require 'dash)
 (require 'deferred)
+(load (expand-file-name "~/eg/eg-evaluators.el"))
 
 (defvar eg-run-examples-default 3
   "If 'eg-run-examples' is called without numerical argument, set argument to this value. See 'eg-run-examples' for options.")
+
+(defun eg-show-inline (text)
+  (save-excursion
+    (if (member major-mode '(lisp-mode emacs-lisp-mode))
+        (lispy--back-to-paren)
+      (back-to-indentation))
+    (unless (and (prog1 (lispy--cleanup-overlay)
+                   (when (window-minibuffer-p)
+                     (window-resize (selected-window) -1)))
+                 (= lispy-hint-pos (point)))
+      (setq lispy-hint-pos (point))
+      (lispy--show (propertize text 'face 'lispy-face-hint)))))
 
 (defun eg-run-examples (&optional ARG)
   "Run examples for operator under cursor. See 'eg--operator' for what operator means.
@@ -58,35 +66,31 @@ When ARG is 3, evaluate examples inline and display results when they are availa
 When ARG is 0, ask for the function before evaluating. Evaluates according to 'eg-run-examples-default'."
   (interactive "P")
   (unless ARG (setq ARG eg-run-examples-default))
-  (let* ((op (if (= ARG 0)
-                 (progn
-                   (setq ARG eg-run-examples-default)
-                   (eg--ask-for-function "Function to Run: "))
-               (aif (eg--operator)
-                   it
-                 (eg--ask-for-function "Function to Run: "))))
-         (examples (eg--get-examples op)))
-    (save-excursion
-      (if (member major-mode '(lisp-mode emacs-lisp-mode))
-          (lispy--back-to-paren)
-        (back-to-indentation))
-      (unless (and (prog1 (lispy--cleanup-overlay)
-                     (when (window-minibuffer-p)
-                       (window-resize (selected-window) -1)))
-                   (= lispy-hint-pos (point)))
+  (save-excursion
+    (if (member major-mode '(lisp-mode emacs-lisp-mode))
+        (lispy--back-to-paren)
+      (back-to-indentation))
+    (unless (and (prog1 (lispy--cleanup-overlay)
+                   (when (window-minibuffer-p)
+                     (window-resize (selected-window) -1)))
+                 (= lispy-hint-pos (point)))
+      (let* ((op (if (= ARG 0)
+                     (progn
+                       (setq ARG eg-run-examples-default)
+                       (eg--ask-for-function "Function to Run: "))
+                   (aif (eg--operator)
+                       it
+                     (eg--ask-for-function "Function to Run: "))))
+             (examples (eg--get-examples op)))
         (setq lispy-hint-pos (point))
-        (cond ((null op)
-               (eg--show-no-operator))
-              ((null examples)
+        (cond ((null examples)
                (eg--show-no-examples op))
               ((= ARG 1) (eg--show-inline examples))
               ((= ARG 2) (eg--eval-inline examples))
               ((= ARG 3) (eval `(eg--deferred-eval-inline ,examples))))))))
 
-(defun eg--show-no-operator ()
-  (eg--show-strings-inline (list (format "No expression under cursor."))))
-
 (defun eg--show-no-examples (op)
+  "Show that there are no examples for OP."
   (eg--show-strings-inline (list (format "No examples associated with %s."
                                          op))))
 
@@ -94,13 +98,22 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
   "Show EXAMPLES inline."
   (eg--show-strings-inline
    (cl-loop for e in examples
-            collect (format "%s" e))))
+            collect
+            (prin1-to-string e))))
+
+(defun eg-eval-inline ()
+  "Evaluate line of expression inline."
+  (interactive)
+  (eg-show-inline (eg-eval (substring (thing-at-point 'line) 0 -1)))
+  )
 
 (defun eg-eval (example)
+  "Run evaluator for EXAMPLE given current mode."
   (cl-case major-mode
     ('emacs-lisp-mode (eval example))
     ('lisp-mode (lispy--eval-lisp (prin1-to-string example)))
     ('python-mode (lispy--eval-python example))
+    ('haskell-mode (eg-eval-haskell example))
     (t (error "%s isn't supported" major-mode))))
 
 (defvar eg-eval-result-max-length 40)
@@ -115,9 +128,12 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
                          (error "Eval error"))))))
 
 (defun eg-format (example result)
+  "Format EXAMPLE and RESULT, truncating if necessary."
+  (when (member major-mode eg-lisp-modes)
+    (setq example (prin1-to-string example)))
   (when (and result (< eg-eval-result-max-length (length (prin1-to-string result))))
     (setq result (format "%s..." (substring (prin1-to-string result) 0 eg-eval-result-max-length))))
-  (if (and (eql major-mode 'python-mode) (equal result ""))
+  (if (and (not (member major-mode eg-lisp-modes)) (equal result ""))
       (format "%s" example)
     (format "%s => %s" example result)))
 
@@ -176,25 +192,43 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
                              (concat (string-pad (car pair) pad-pos) (cdr pair)))
                            substring-pairs))))
 
+(defun eg--fontify (text mode)
+  "Fontify TEXT given MODE."
+  (with-temp-buffer
+    (erase-buffer)
+    (insert text)
+    (delay-mode-hooks (funcall mode))
+    (font-lock-default-function mode)
+    (font-lock-default-fontify-region (point-min) (point-max) nil)
+    (buffer-string)))
+
+(defvar eg-show-syntax-highlighting-inline nil
+  "Show syntax highlighting when showing results inline.")
 (defun eg--show-strings-inline (strings &optional display-height)
   "Show STRINGS inline with vertical padding of DISPLAY-HEIGHT."
   (save-excursion
     (goto-char lispy-hint-pos)
-    (lispy--show (propertize (string-join
-                              (eg--align-strings
-                               (append strings
-                                       (when display-height
-                                         (-repeat (- display-height (length strings)) "...")))
-                               "=>")
-                              "\n")
-                             'face 'lispy-face-hint))))
+    (let ((text (string-join
+                 (eg--align-strings
+                  (append strings
+                          (when display-height
+                            (-repeat (- display-height (length strings)) "...")))
+                  "=>")
+                 "\n")))
+      (if eg-show-syntax-highlighting-inline
+          (lispy--show (eg--fontify text major-mode))
+        (lispy--show (propertize text 'face 'lispy-face-hint))))))
 
 (general-def
-  :keymaps '(lisp-mode-map emacs-mode-map lispy-mode-map python-mode-map)
+  :keymaps '(lisp-mode-map emacs-mode-map lispy-mode-map python-mode-map haskell-mode-map)
   "C-+" 'eg-run-examples
   "C-4" (lambda ()
           (interactive)
           (eg-run-examples 0)))
+(general-def
+  :keymaps '(python-mode-map haskell-mode-map)
+  "C-3" 'eg-eval-inline
+  )
 
 (provide 'eg-deferred)
 

@@ -6,7 +6,7 @@
 ;; URL: https://github.com/joshcho/eg
 ;; Version: alpha
 ;; Keywords: convenience
-;; Package-Requires: (lispy cl-format) FIXME: remove dependencies
+;; Package-Requires: (lispy cl-format)
 
 ;; This file is not part of GNU Emacs.
 
@@ -33,10 +33,6 @@
 
 ;;; Code:
 
-;; https://nullprogram.com/blog/2013/02/06/
-
-(require 'dash)
-
 (defmacro save-point (pred &rest body)
   "If PRED, save point before executing BODY, and restore point."
   `(progn
@@ -60,7 +56,7 @@
 (defun eg-switch-to-other-window-and-resize (buffer)
   "Switch to BUFFER, and set window height."
   (switch-to-buffer-other-window buffer)
-  (set-window-text-height (get-buffer-window) eg-window-height)
+  (ignore-errors (set-window-text-height (get-buffer-window) eg-window-height))
   )
 
 (defvar eg-master-mode-hook nil)
@@ -88,8 +84,7 @@
         (delete-window))
     (progn
       (eg--populate (eg-master-buffer) (prin1-to-string (eg--local->stored eg-examples)))
-      (eg-switch-to-other-window-and-resize (eg-master-buffer))
-      (lispy-multiline))))
+      (eg-switch-to-other-window-and-resize (eg-master-buffer)))))
 
 (defun eg-sync-master ()
   "Sync any changes made to 'eg-live' buffer."
@@ -113,7 +108,7 @@
         ))))
 
 (general-def
-  :keymaps '(emacs-lisp-mode-map lisp-mode-map python-mode-map)
+  :keymaps 'global-map
   eg-master-toggle-key 'eg-master)
 
 (defvar eg-live-name "*eg-live*")
@@ -150,57 +145,84 @@
              (if (member (eg--operator) (eg--get-functions))
                  (eg--operator)
                (eg--ask-for-function "Function to Edit: "))))
-        (eg-live-populate-examples func)
+        (setq eg-live-fn func)
+        (eg--populate
+         (eg-live-buffer)
+         (eg-live-examples-to-string func))
         (eg-switch-to-other-window-and-resize (eg-live-buffer))
-        (funcall saved-major-mode))
-      ))
-  )
+        (funcall saved-major-mode)
+        (when (member major-mode eg-lisp-modes)
+          (save-excursion
+            (next-line)
+            (lispy-multiline)))))))
+
+(defun eg-live-read-examples ()
+  "Read examples within current buffer (assumed 'eg-live')."
+  (unless (equal (buffer-name) eg-live-name)
+    (error "Not in eg-live buffer"))
+  (cond ((member major-mode eg-lisp-modes)
+         (read (buffer-string)))
+        ((eql major-mode 'python-mode)
+         (-map #'substring-no-properties
+               (-remove (lambda (s) (or (eql ?# (string-to-char s)) (string-blank-p s))) (split-string (buffer-string) "\n"))))
+        ((eql major-mode 'haskell-mode)
+         (-map #'substring-no-properties
+               (-remove (lambda (s) (or (string-blank-p s) (and
+                                                       (< 1 (length s))
+                                                       (equal "--" (substring s 0 2)))))
+                        (split-string (buffer-string) "\n"))))))
 
 (defun eg-sync-live ()
   "Sync any changes made to 'eg-live' buffer."
   (when eg-live-fn
     (with-current-buffer (eg-live-buffer)
-      (let ((fn-examples (cond ((member major-mode '(lisp-mode emacs-lisp-mode))
-                                (read (buffer-string)))
-                               ((eql major-mode 'python-mode)
-                                (-map #'substring-no-properties
-                                      (-remove (lambda (s) (or (eql ?# (string-to-char s)) (string-blank-p s))) (split-string (buffer-string) "\n")))))))
+      (let ((fn-examples (eg-live-read-examples)))
         (unless (equal (eg--get-examples eg-live-fn) fn-examples)
           (eg--set-examples eg-live-fn fn-examples)
           (message "eg-examples synced for %s" eg-live-fn))))))
 
-(defvar eg-always-add-new-example-when-empty nil)
-(defvar eg-do-not-ask-to-add-example nil)
-(defun eg--print-example-strings (fn example-print-function)
-  "Optimized print for performance on examples with FN using EXAMPLE-PRINT-FUNCTION. FIXME: Misnomer, not a print."
-  (let* ((examples (eg--get-examples fn))
-         (example-strings
-          (if (null examples)
-              (unless (eql major-mode 'python-mode)
-                (when (and (equal (first (eg--current-list)) fn)
-                           (or eg-always-add-new-example-when-empty
-                               (unless eg-do-not-ask-to-add-example
-                                 (yes-or-no-p "Add example under cursor?"))))
-                  (list (format ";; new example\n%s" (eg--current-list)))))
-            (mapcar example-print-function
-                    examples))))
-    (if (eql major-mode 'python-mode)
-        (format "# %s\n%s"
-                fn
-                (string-join (-interpose "\n"
-                                         examples)))
-      (format ";; %s\n(%s\n )"
-              fn
-              (string-join (-interpose "\n "
-                                       example-strings))))))
+(defun eg--possible-example-at-point (fn)
+  "Return thing at point if it can be an example of FN."
+  (cond ((member major-mode eg-lisp-modes)
+         (let ((e (eg--current-list)))
+           (when (equal (first e) fn)
+             e)))
+        ((eql major-mode 'python-mode)
+         (let ((e (thing-at-point 'line)))
+           (when (cl-search (s-replace "\\" "" (prin1-to-string fn)) (thing-at-point 'line))
+             ;; remove newline char
+             (substring e 0 -1))))))
 
-(defun eg-live-populate-examples (fn)
-  "Populate 'eg-live' buffer with examples of FN."
-  (setq eg-live-fn fn
-        eg-showing-runs nil)
-  (eg--populate
-   (eg-live-buffer)
-   (eg--print-example-strings fn #'prin1-to-string)))
+(defvar eg-lisp-modes '(emacs-lisp-mode lisp-mode))
+(defvar eg-always-add-new-example nil
+  "Always add new example when queried.")
+(defvar eg-ask-to-add-example t
+  "Ask to add example under cursor.")
+
+(defun eg-live-examples-to-string (fn)
+  "Generate string for examples of FN to be used in 'eg-live' buffer."
+  (let ((examples (eg--get-examples fn)))
+    (when (null examples)
+      (setq examples (awhen (eg--possible-example-at-point fn)
+                       (when (or eg-always-add-new-example
+                                 (and eg-ask-to-add-example
+                                      (yes-or-no-p "Add example under cursor?")))
+                         (list it)))))
+    (setq example-strings (if (member major-mode eg-lisp-modes)
+                              (mapcar #'prin1-to-string examples)
+                            examples))
+    (if (member major-mode eg-lisp-modes)
+        (format ";; %s\n(%s\n )"
+                fn
+                (string-join (-interpose "\n "
+                                         example-strings)))
+      (format "%s%s\n%s"
+              (case major-mode
+                ('python-mode "# ")
+                ('haskell-mode "-- "))
+              fn
+              (string-join (-interpose "\n"
+                                       example-strings))))))
 
 (defun eg-live-buffer ()
   "Return 'eg-live' buffer, creating a new one if needed."
@@ -216,7 +238,7 @@
         ))))
 
 (general-def
-  :keymaps '(emacs-lisp-mode-map lisp-mode-map python-mode-map)
+  :keymaps '(emacs-lisp-mode-map lisp-mode-map python-mode-map haskell-mode-map)
   eg-live-toggle-key 'eg-live)
 
 (provide 'eg-live)

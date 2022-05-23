@@ -20,8 +20,8 @@ NOTE: /eg/ does not limit itself to pure nor small functions, but is best fit fo
 TODO
 
 ** Features
-- ~C-3~ to show your examples inline (TODO: add gif, add keybinding) ~eg-show-examples~
-- ~C-4~ to run your examples inline (TODO: add gif, add keybinding) ~eg-run-examples-incrementally~
+- ~C-3~ to evaluate current expression (or line) inline (TODO: add gif, add keybinding) ~eg-eval-inline~. For use in non-lisp buffers.
+- ~C-4~ to run your examples inline (TODO: add gif, add keybinding) ~eg-run-examples~
   Examples are run, and results are displayed as soon as they are available.
 - ~C-c apostrophe~ to bring up *eg-master* buffer ~eg-master~
   *eg-master* buffer allows you to edit all of your examples. This can act as a high-level debugger for your examples.
@@ -31,18 +31,22 @@ TODO
 
 ** Supported Languages
 
-Support for emacs lisp and common lisp are first-class, with python coming next. I have no experience with clojure, so support for clojure in the form of pull requests is welcome.
+Support for Emacs Lisp and Common Lisp is first-class, with Python and Haskell being usable.
+
+For Python, things are a bit flaky; if something breaks, try ~lispy-middleware-reload~ or ~run-python~.
+For Haskell, run ~haskell-session-change~ before running eg commands.
 
 * Getting Started
 
 ** Installation
-TODO
+TODO, add straight instructions
 
 ** Configuration Instructions
 - ~eg-sort-on-save~
 - ~eg-ask-save-on-ext~
 - ~eg-save-on-every-update~
 - ~eg-live-window-height~
+- TODO add some more
 
 * Conceptual Explanation
 ** Comparison with REPL
