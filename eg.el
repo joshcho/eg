@@ -36,43 +36,32 @@
 ;; 1. Weird behavior when calling run-examples (probably) from eg-live-fn buffer
 ;; 2. Mark set when eg-live or eg-live-fn?
 ;; 3. Watch for performance with benchmark
-;; 5. Lambda nil printing
+;; 4. There are some performance issues with memory?
+;; 5. New example broken when string is in arg
+;; 6. Operator broken when in comment
+;; 7. Broken with cl-format
 
 ;; TODO
 ;; 1. Polish support for python
-;; 2. Add expected value? Cached value?
-;; 3. Provide an option to evaluate current expression as well when calling eg-run-examples
-;; 4. Add multiline support for inline displays
-;; 5. Allow persistent commented tests
-;; 6. Separate examples for different languages (and load them separately, too)
-;; 7. Make lang into keyword, not optional
-;; 8. Differentiate between my keybindings and general keybindings (use-package just for myself)
-;; 9. Fix some porting issues in README (consider markdown)
-;; 10. Consider orthogonalizing further as needed by python integration
-;; 11. Add truncate options for long results
-;; 12. Figure out &optional and langs (probably with global variable eg-live-fn-lang or something)
-;; 13. Better name than eg?
-;; 14. Customize format in *eg-live*, list, smart, expressions, etc.
-;; 15. Async?
-;; 16. Add example template as core
-;; 17. Example format should be maintained throughout sessions (don't use sexp's as portable format). If using strings, check validity on save.
-;; 18. Consider different files for things
-;; 19. Add lispy-try support
-;; 20. Remove eg-master
+;; 2. Provide an option to evaluate current expression as well when calling eg-run-examples
+;; 3. Allow persistent commented tests
+;; 4. Differentiate between my keybindings and general keybindings (use-package just for myself)
+;; 5. Add truncate options for long results
+;; 6. Figure out &optional and langs (probably with global variable eg-live-fn-lang or something)
+;; 7. Better name than eg?
+;; 8. Add lispy-try support
+;; 9. Remove eg-master
 
 ;; TODO for python support
 ;; 1. Integrate with lsp?
+;; 2. (setq python-indent-guess-indent-offset-verbose nil) is needed?
 
 ;; TODO for eg-live
-;; 1. Display header instead of comment
-;; 2. Think of better names for eg-master and eg-live
-;; 3. *Live preview of examples as you scroll through, maybe use consult?*
-;; 4. Generalize personal use with exit-emacs-state
-;; 5. Better display of non-lisp examples
-;; 6. Maybe take inspiration from magit?
-;; 7. Add better support for python
-;; 8. Sync when window is deleted, but don't close (undo doesn't work otherwise). When closing, try to sync.
-;; 9. eg-live should add current example maybe when no examples exist
+;; 1. Think of better names for eg-master and eg-live
+;; 2. *Live preview of examples as you scroll through, maybe use consult?*
+;; 3. Better display of non-lisp examples
+;; 4. Maybe take inspiration from magit?
+;; 5. Sync when window is deleted, but don't close (undo doesn't work otherwise). When closing, try to sync.
 
 ;; THUNKS
 ;; 1. Take a look at math/scratch.lisp. Maybe more interactive ways of modifying content?
@@ -82,6 +71,7 @@
 (require 'lispy)
 (require 'thingatpt)
 (require 'ht)
+(require 'anaphora)
 
 (defgroup eg nil
   "Configuration for eg."
@@ -94,75 +84,44 @@
     (insert-file-contents file)
     (buffer-string)))
 
-(defmacro lispy--show-inline (expr)
-  "Display the result of EXPR inline. EXPR must evaluate to string. This is implemented as a macro as EXPR must be evaluated after the program traverses to the appropriate location. FIXME: Really weird interaction."
-  `(save-excursion
-     (unless (eq major-mode 'python-mode)
-       (lispy--back-to-paren))
-     (unless (and (prog1 (lispy--cleanup-overlay)
-                    (when (window-minibuffer-p)
-                      (window-resize (selected-window) -1)))
-                  (= lispy-hint-pos (point)))
-       (cond ((memq major-mode lispy-elisp-modes)
-              (let ((sym (intern-soft (lispy--current-function))))
-                (cond ((fboundp sym)
-                       (setq lispy-hint-pos (point))
-                       (lispy--show (eval ,expr))
-                       (other-window 1)))))
-             ((eq major-mode 'lisp-mode)
-              (require 'le-lisp)
-              (setq lispy-hint-pos (point))
-              (lispy--show (eval ,expr))
-              (other-window 1))
-             ((eq major-mode 'python-mode)
-              (setq lispy-hint-pos (point))
-              (lispy--show (eval ,expr))
-              (other-window 1))
-             (t (error "%s isn't supported currently" major-mode))))))
-
 (defvar eg-file (expand-file-name "~/eg/eg-examples.el"))
 
 (defvar eg-examples nil
   "Examples associated with functions.")
 
-(defvar eg-examples-doc "eg-examples. changes made by hand may be overwritten. if you made changes, make sure to call eg-load-examples to sync eg-examples with your file."
-  "That which gets added to the beginning of eg-examples.el.")
-
 (defun eg--local->stored (local-examples)
   "Convert LOCAL-EXAMPLES to stored format. See 'eg--stored->local' for explanation."
-  (cl-loop for lang being the hash-keys in local-examples
+  (cl-loop for mode being the hash-keys in local-examples
            using (hash-value fn-examples)
-           collect (cons lang (ht->alist fn-examples))
+           collect (cons mode (ht->alist fn-examples))
            ))
-(eg--local->stored eg-examples)
 
 (defun eg--stored->local (stored-examples)
   "Convert STORED-EXAMPLES to local format. Note that eg use two representations for data. When storing examples in 'eg-file', eg use nested association list. When loading and using examples in Emacs, eg use nested hash table. This function (and 'eg--local->stored') convert between the two formats."
   (ht<-alist
-   (cl-loop for (lang . fn-examples) in stored-examples
-            collect (cons lang (ht<-alist fn-examples)))))
+   (cl-loop for (mode . fn-examples) in stored-examples
+            collect (cons mode (ht<-alist fn-examples)))))
 
 (defun eg--local-examples-equal (examples1 examples2)
   "Check if EXAMPLES1 and EXAMPLES2 are equal to each other in local format (i.e. format of 'eg-examples')."
   (and
    (= (ht-size examples1)
       (ht-size examples2))
-   (cl-loop for lang being the hash-keys in examples1
-            always (ht-equal? (ht-get examples1 lang)
-                              (ht-get examples2 lang)))))
+   (cl-loop for mode being the hash-keys in examples1
+            always (ht-equal? (ht-get examples1 mode)
+                              (ht-get examples2 mode)))))
 
 (defun eg-load-examples ()
-  "Load 'eg-examples' from `eg-file'."
+  "Load 'eg-examples' from 'eg-file'."
   (interactive)
   (let ((stored-examples (read (eg--file-to-string eg-file))))
     (setq eg-examples (eg--stored->local stored-examples)))
-  ;; (eg--prettify-eg-examples)
   )
 
 (defun eg--sort-stored (examples)
   "Sort EXAMPLES."
-  (cl-sort (cl-loop for (lang . fn-examples) in examples
-                    collect (cons lang (cl-sort fn-examples #'string< :key #'car)))
+  (cl-sort (cl-loop for (mode . mode-examples) in examples
+                    collect (cons mode (cl-sort mode-examples #'string< :key #'car)))
            #'string< :key #'car))
 
 (defvar eg-sort-on-save t
@@ -178,7 +137,7 @@
   (interactive)
   (if (eg--examples-modified)
       (with-temp-file eg-file
-        (insert ";; " eg-examples-doc "\n")
+        (insert ";; eg-examples. changes made by hand may be overwritten. if you made changes, make sure to call eg-load-examples to sync eg-examples with your file.\n")
         (insert (prin1-to-string
                  (funcall (if eg-sort-on-save
                               #'eg--sort-stored
@@ -219,6 +178,7 @@
               (char-before))
           (backward-char))
          ((zerop (nth 0 (syntax-ppss)))
+          ;; depth in parens is zero
           '())
          (t
           (goto-char (nth 1 (syntax-ppss)))
@@ -226,19 +186,32 @@
         (list-at-point))
     (thing-at-point 'line)))
 
-(defun eg--current-lang ()
-  "Get current language of buffer."
-  (cl-case major-mode
-    ('emacs-lisp-mode 'emacs-lisp)
-    ('lisp-mode 'lisp)
-    ('python-mode 'python)))
+(defun lispy--python-end-of-object ()
+  (save-excursion
+    (if (bolp)
+        (forward-char)
+      (forward-sexp))
+    (while (not (or
+                 (eolp)
+                 (looking-at "[[ \t(]")))
+      (forward-sexp))
+    (point)))
 
 (defun eg--operator ()
-  "Return the operator in current form."
-  (let ((expr (eg--current-list))
-        (lang (eg--current-lang)))
-    (if (equal lang 'python)
-        (intern (lispy--current-function))
+  "Return `appropriate` function name. If in a def- expression, return the function being defined. Otherwise, return the function of the current list."
+  (if (eql major-mode 'python-mode)
+      (awhen (thing-at-point 'symbol)
+        (cond ((save-excursion
+                 (beginning-of-thing 'symbol)
+                 (eql (char-before) ?.))
+               (intern (buffer-substring (lispy--python-beginning-of-object) (cdr (bounds-of-thing-at-point 'symbol)))))
+              ((save-excursion
+                 (end-of-thing 'symbol)
+                 (eql (char-after) ?.))
+               (intern (buffer-substring (car (bounds-of-thing-at-point 'symbol)) (lispy--python-end-of-object))))
+              (t
+               (intern it))))
+    (let ((expr (eg--current-list)))
       (when expr
         (when (equal (first expr) 'quote)
           (setq expr (second expr)))
@@ -246,26 +219,26 @@
             (second expr)
           (first expr))))))
 
-(cl-defun eg--get-examples (fn &optional (lang (eg--current-lang)))
-  "Get examples associated with LANG and FN in `eg-examples'."
-  (ht-get* eg-examples lang fn))
+(cl-defun eg--get-examples (fn)
+  "Get examples associated with FN in `eg-examples'."
+  (ht-get* eg-examples major-mode fn))
 
-(cl-defun eg--set-examples (fn examples &optional (lang (eg--current-lang)))
-  "Set examples associated with LANG and FN to EXAMPLES."
+(cl-defun eg--set-examples (fn examples)
+  "Set examples associated with FN to EXAMPLES."
   (if (null examples)
-      (ht-remove (ht-get eg-examples lang) fn)
-    (setf (ht-get* eg-examples lang fn) examples)))
+      (ht-remove (ht-get eg-examples major-mode) fn)
+    (setf (ht-get* eg-examples major-mode fn) examples)))
 
-(cl-defun eg--get-functions (&optional (lang (eg--current-lang)))
-  "Get a list of functions associated with LANG."
-  (if-let (lang-hash (ht-get eg-examples lang))
-      (ht-keys lang-hash)
+(cl-defun eg--get-functions ()
+  "Get a list of functions."
+  (if-let (hash (ht-get eg-examples major-mode))
+      (ht-keys hash)
     (progn
-      (ht-set! eg-examples lang (ht-create))
+      (ht-set! eg-examples major-mode (ht-create))
       nil)))
 
 (defun eg--ask-for-function (prompt)
-  "Ask for function in PROMPT given LANG."
+  "Ask for function in PROMPT."
   (let ((function-list (eg--get-functions))
         (op (eg--operator)))
     (read (completing-read prompt
@@ -274,7 +247,9 @@
                              function-list)
                            nil nil nil nil
                            (when op
-                             (prin1-to-string op))))))
+                             (if (eql major-mode 'python-mode)
+                                 (s-replace "\\" "" (prin1-to-string op))
+                               (prin1-to-string op)))))))
 
 (define-prefix-command 'eg-command-map)
 (global-set-key (kbd "C-c C-e") 'eg-command-map)

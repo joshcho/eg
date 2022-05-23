@@ -18,11 +18,3 @@
               (eg-save-examples)
               (eg-load-examples)
               (eg--local-examples-equal eg-examples temp)))))
-
-(ert-deftest add-delete-test ()
-  (should (let ((temp eg-examples)
-                (sym (gensym)))
-            (unless (eg--get-examples sym)
-              (eg--perform-add-example '(+ 1 2) sym)
-              (should (eg--perform-remove-example '(+ 1 2) sym))
-              (eg--local-examples-equal eg-examples temp)))))
