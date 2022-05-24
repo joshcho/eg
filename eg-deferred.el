@@ -66,22 +66,22 @@ When ARG is 3, evaluate examples inline and display results when they are availa
 When ARG is 0, ask for the function before evaluating. Evaluates according to 'eg-run-examples-default'."
   (interactive "P")
   (unless ARG (setq ARG eg-run-examples-default))
-  (save-excursion
-    (if (member major-mode '(lisp-mode emacs-lisp-mode))
-        (lispy--back-to-paren)
-      (back-to-indentation))
-    (unless (and (prog1 (lispy--cleanup-overlay)
-                   (when (window-minibuffer-p)
-                     (window-resize (selected-window) -1)))
-                 (= lispy-hint-pos (point)))
-      (let* ((op (if (= ARG 0)
-                     (progn
-                       (setq ARG eg-run-examples-default)
-                       (eg--ask-for-function "Function to Run: "))
-                   (aif (eg--operator)
-                       it
-                     (eg--ask-for-function "Function to Run: "))))
-             (examples (eg--get-examples op)))
+  (let* ((op (if (= ARG 0)
+                 (progn
+                   (setq ARG eg-run-examples-default)
+                   (eg--ask-for-function "Function to Run: "))
+               (aif (eg--operator)
+                   it
+                 (eg--ask-for-function "Function to Run: "))))
+         (examples (eg--get-examples op)))
+    (save-excursion
+      (if (member major-mode '(lisp-mode emacs-lisp-mode))
+          (lispy--back-to-paren)
+        (back-to-indentation))
+      (unless (and (prog1 (lispy--cleanup-overlay)
+                     (when (window-minibuffer-p)
+                       (window-resize (selected-window) -1)))
+                   (= lispy-hint-pos (point)))
         (setq lispy-hint-pos (point))
         (cond ((null examples)
                (eg--show-no-examples op))
@@ -131,11 +131,12 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
   "Format EXAMPLE and RESULT, truncating if necessary."
   (when (member major-mode eg-lisp-modes)
     (setq example (prin1-to-string example)))
-  (when (and result (< eg-eval-result-max-length (length (prin1-to-string result))))
-    (setq result (format "%s..." (substring (prin1-to-string result) 0 eg-eval-result-max-length))))
   (if (and (not (member major-mode eg-lisp-modes)) (equal result ""))
       (format "%s" example)
-    (format "%s => %s" example result)))
+    (format "%s => %s" example
+            (if (and result (< eg-eval-result-max-length (length (prin1-to-string result))))
+                (concat (string-limit result eg-eval-result-max-length) "...")
+              result))))
 
 (defmacro eg--deferred-eval-inline (examples)
   "Evaluate EXAMPLES in order and display results inline as soon as they are available."
