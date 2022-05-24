@@ -155,32 +155,34 @@
   (eg-load-examples))
 
 (defun eg--current-list ()
-  "Get current list around point."
+  "Get current list around point. FIXME: different types returned."
   (if (member major-mode '(lisp-mode emacs-lisp-mode))
-      (save-excursion
-        (cond
-         ((or (nth 3 (syntax-ppss))
-              (nth 4 (syntax-ppss)))
-          ;; comment or string
-          (goto-char (nth 1 (syntax-ppss)))
-          (forward-char))
-         ((eq ?\'
-              (char-after))
-          (forward-char 2))
-         ((eq ?\(
-              (char-after))
-          (forward-char))
-         ((eq ?\)
-              (char-before))
-          (backward-char))
-         ((zerop (nth 0 (syntax-ppss)))
-          ;; depth in parens is zero
-          '())
-         (t
-          (goto-char (nth 1 (syntax-ppss)))
-          (forward-char)))
-        (list-at-point))
-    (thing-at-point 'line)))
+      (the list
+        (save-excursion
+          (cond
+           ((or (nth 3 (syntax-ppss))
+                (nth 4 (syntax-ppss)))
+            ;; comment or string
+            (goto-char (nth 1 (syntax-ppss)))
+            (forward-char))
+           ((eq ?\'
+                (char-after))
+            (forward-char 2))
+           ((eq ?\(
+                (char-after))
+            (forward-char))
+           ((eq ?\)
+                (char-before))
+            (backward-char))
+           ((zerop (nth 0 (syntax-ppss)))
+            ;; depth in parens is zero
+            '())
+           (t
+            (goto-char (nth 1 (syntax-ppss)))
+            (forward-char)))
+          (list-at-point)))
+    (the string
+      (thing-at-point 'line))))
 
 (defun lispy--python-end-of-object ()
   (save-excursion
@@ -195,25 +197,26 @@
 
 (defun eg--operator ()
   "Return `appropriate` function name. If in a def- expression, return the function being defined. Otherwise, return the function of the current list."
-  (if (member major-mode eg-lisp-modes)
-      (let ((expr (eg--current-list)))
-        (when expr
-          (when (equal (first expr) 'quote)
-            (setq expr (second expr)))
-          (if (member (first expr) '(cl-defun cl-defmacro defun defmacro defgeneric))
-              (second expr)
-            (first expr))))
-    (awhen (thing-at-point 'symbol)
-      (cond ((save-excursion
-               (beginning-of-thing 'symbol)
-               (eql (char-before) ?.))
-             (intern (buffer-substring (lispy--python-beginning-of-object) (cdr (bounds-of-thing-at-point 'symbol)))))
-            ((save-excursion
-               (end-of-thing 'symbol)
-               (eql (char-after) ?.))
-             (intern (buffer-substring (car (bounds-of-thing-at-point 'symbol)) (lispy--python-end-of-object))))
-            (t
-             (intern it))))))
+  (the symbol
+    (if (member major-mode eg-lisp-modes)
+        (let ((expr (eg--current-list)))
+          (when expr
+            (when (equal (first expr) 'quote)
+              (setq expr (second expr)))
+            (if (member (first expr) '(cl-defun cl-defmacro defun defmacro defgeneric))
+                (second expr)
+              (first expr))))
+      (awhen (thing-at-point 'symbol)
+        (cond ((save-excursion
+                 (beginning-of-thing 'symbol)
+                 (eql (char-before) ?.))
+               (intern (buffer-substring (lispy--python-beginning-of-object) (cdr (bounds-of-thing-at-point 'symbol)))))
+              ((save-excursion
+                 (end-of-thing 'symbol)
+                 (eql (char-after) ?.))
+               (intern (buffer-substring (car (bounds-of-thing-at-point 'symbol)) (lispy--python-end-of-object))))
+              (t
+               (intern it)))))))
 
 (cl-defun eg--get-examples (fn)
   "Get examples associated with FN in `eg-examples'."
@@ -237,15 +240,16 @@
   "Ask for function in PROMPT."
   (let ((function-list (eg--get-functions))
         (op (eg--operator)))
-    (read (completing-read prompt
-                           (if op
-                               (adjoin op function-list)
-                             function-list)
-                           nil nil nil nil
-                           (when op
-                             (if (eql major-mode 'python-mode)
-                                 (s-replace "\\" "" (prin1-to-string op))
-                               (prin1-to-string op)))))))
+    (the symbol
+      (read (completing-read prompt
+                             (if op
+                                 (adjoin op function-list)
+                               function-list)
+                             nil nil nil nil
+                             (when op
+                               (if (eql major-mode 'python-mode)
+                                   (s-replace "\\" "" (prin1-to-string op))
+                                 (prin1-to-string op))))))))
 
 (define-prefix-command 'eg-command-map)
 (global-set-key (kbd "C-c C-e") 'eg-command-map)
