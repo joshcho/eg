@@ -47,7 +47,7 @@
 
 (defun eg-show-inline (text)
   (save-excursion
-    (if (member major-mode '(lisp-mode emacs-lisp-mode))
+    (if (member major-mode eg-lisp-family)
         (lispy--back-to-paren)
       (back-to-indentation))
     (unless (and (prog1 (lispy--cleanup-overlay)
@@ -75,7 +75,7 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
                  (eg--ask-for-function "Function to Run: "))))
          (examples (eg--get-examples op)))
     (save-excursion
-      (if (member major-mode '(lisp-mode emacs-lisp-mode))
+      (if (member major-mode eg-lisp-family)
           (lispy--back-to-paren)
         (back-to-indentation))
       (unless (and (prog1 (lispy--cleanup-overlay)
@@ -112,6 +112,7 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
   (cl-case major-mode
     ('emacs-lisp-mode (eval example))
     ('lisp-mode (lispy--eval-lisp (prin1-to-string example)))
+    ('scheme-mode (lispy--eval-lisp (prin1-to-string example)))
     ('python-mode (lispy--eval-python example))
     ('haskell-mode (eg-eval-haskell example))
     (t (error "%s isn't supported" major-mode))))
@@ -129,9 +130,9 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
 
 (defun eg-format (example result)
   "Format EXAMPLE and RESULT, truncating if necessary."
-  (when (member major-mode eg-lisp-modes)
+  (when (member major-mode eg-lisp-family)
     (setq example (prin1-to-string example)))
-  (if (and (not (member major-mode eg-lisp-modes)) (equal result ""))
+  (if (and (not (member major-mode eg-lisp-family)) (equal result ""))
       (format "%s" example)
     (format "%s => %s" example
             (if (and result (< eg-eval-result-max-length (length (prin1-to-string result))))
@@ -221,7 +222,7 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
         (lispy--show (propertize text 'face 'lispy-face-hint))))))
 
 (general-def
-  :keymaps '(lisp-mode-map emacs-mode-map lispy-mode-map python-mode-map haskell-mode-map)
+  :keymaps '(lisp-mode-map emacs-mode-map lispy-mode-map python-mode-map haskell-mode-map scheme-mode-map)
   "C-+" 'eg-run-examples
   "C-4" (lambda ()
           (interactive)

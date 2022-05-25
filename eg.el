@@ -154,9 +154,10 @@
 (when eg-load-on-startup
   (eg-load-examples))
 
+(defvar eg-lisp-family '(lisp-mode emacs-lisp-mode scheme-mode))
 (defun eg--current-list ()
   "Get current list around point. FIXME: different types returned."
-  (if (member major-mode '(lisp-mode emacs-lisp-mode))
+  (if (member major-mode eg-lisp-family)
       (the list
         (save-excursion
           (cond
@@ -198,7 +199,7 @@
 (defun eg--operator ()
   "Return `appropriate` function name. If in a def- expression, return the function being defined. Otherwise, return the function of the current list."
   (the symbol
-    (if (member major-mode eg-lisp-modes)
+    (if (member major-mode eg-lisp-family)
         (let ((expr (eg--current-list)))
           (when expr
             (when (equal (first expr) 'quote)

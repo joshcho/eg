@@ -151,7 +151,7 @@
          (eg-live-examples-to-string func))
         (eg-switch-to-other-window-and-resize (eg-live-buffer))
         (funcall saved-major-mode)
-        (when (member major-mode eg-lisp-modes)
+        (when (member major-mode eg-lisp-family)
           (save-excursion
             (next-line)
             (lispy-multiline)))))))
@@ -160,7 +160,7 @@
   "Read examples within current buffer (assumed 'eg-live')."
   (unless (equal (buffer-name) eg-live-name)
     (error "Not in eg-live buffer"))
-  (cond ((member major-mode eg-lisp-modes)
+  (cond ((member major-mode eg-lisp-family)
          (read (buffer-string)))
         ((eql major-mode 'python-mode)
          (-map #'substring-no-properties
@@ -183,7 +183,7 @@
 
 (defun eg--possible-example-at-point (fn)
   "Return thing at point if it can be an example of FN."
-  (cond ((member major-mode eg-lisp-modes)
+  (cond ((member major-mode eg-lisp-family)
          (let ((e (eg--current-list)))
            (when (equal (first e) fn)
              e)))
@@ -193,7 +193,6 @@
              ;; remove newline char
              (substring e 0 -1))))))
 
-(defvar eg-lisp-modes '(emacs-lisp-mode lisp-mode))
 (defvar eg-always-add-new-example nil
   "Always add new example when queried.")
 (defvar eg-ask-to-add-example t
@@ -208,10 +207,10 @@
                                  (and eg-ask-to-add-example
                                       (yes-or-no-p "Add example under cursor?")))
                          (list it)))))
-    (setq example-strings (if (member major-mode eg-lisp-modes)
+    (setq example-strings (if (member major-mode eg-lisp-family)
                               (mapcar #'prin1-to-string examples)
                             examples))
-    (if (member major-mode eg-lisp-modes)
+    (if (member major-mode eg-lisp-family)
         (format ";; %s\n(%s\n )"
                 fn
                 (string-join (-interpose "\n "
@@ -238,7 +237,7 @@
         ))))
 
 (general-def
-  :keymaps '(emacs-lisp-mode-map lisp-mode-map python-mode-map haskell-mode-map)
+  :keymaps '(emacs-lisp-mode-map lisp-mode-map python-mode-map haskell-mode-map scheme-mode-map)
   eg-live-toggle-key 'eg-live)
 
 (provide 'eg-live)

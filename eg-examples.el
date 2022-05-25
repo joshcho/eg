@@ -131,6 +131,7 @@
                     (adjoin 'e '(a b c d)))
             (all-function-symbols (all-function-symbols :serapeum))
             (app-define-key (app-define-key "emacs" "C-@" "@"))
+            (coords (coords (@ *players* "John")))
             (flatten (flatten '(a b c d (e f))))
             (function-name (function-name #'+))
             (length (length (all-function-symbols :serapeum)))
