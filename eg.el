@@ -40,16 +40,13 @@
 ;; 5. Operator broken when in comment
 
 ;; TODO
-;; 1. Polish support for python
-;; 2. Provide an option to evaluate current expression as well when calling eg-run-examples
-;; 3. Allow persistent commented tests
-;; 4. Differentiate between my keybindings and general keybindings (use-package just for myself)
-;; 5. Better name than eg?
-;; 6. Add lispy-try support
-;; 7. Remove eg-master
-;; 8. Use text instead of s-expressions for speed and portability
-;; 9. Enable multiline expressions
-;; 10. Add defcustoms
+;; 1. Allow persistent commented tests
+;; 2. Differentiate between my keybindings and general keybindings (use-package just for myself)
+;; 3. Better name than eg?
+;; 4. Add lispy-try support
+;; 5. Enable multiline expressions
+;; 6. Add defcustoms
+;; 7. Allow descriptions at the top of tests
 
 ;; TODO for python support
 ;; 1. (setq python-indent-guess-indent-offset-verbose nil) is needed?

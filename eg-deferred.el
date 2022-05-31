@@ -104,7 +104,10 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
 (defun eg-eval-inline ()
   "Evaluate line of expression inline."
   (interactive)
-  (eg-show-inline (eg-eval (substring (thing-at-point 'line) 0 -1)))
+  (eg-show-inline
+   (if (member major-mode eg-lisp-family)
+       (eg-eval (eg--current-list))
+     (eg-eval (substring (thing-at-point 'line) 0 -1))))
   )
 
 (defun eg-eval (example)
@@ -228,7 +231,7 @@ When ARG is 0, ask for the function before evaluating. Evaluates according to 'e
           (interactive)
           (eg-run-examples 0)))
 (general-def
-  :keymaps '(python-mode-map haskell-mode-map)
+  :keymaps '(python-mode-map haskell-mode-map lispy-mode-map)
   "C-3" 'eg-eval-inline
   )
 
